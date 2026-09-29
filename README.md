@@ -148,17 +148,7 @@ hazina-review --all ~/hazina
 - The AI part is billed to your Claude or Codex account: about $5 to $8 for a small
   repository, more for a large one. The build and tests cost nothing extra.
 
-## 5. Send
-
-At the end it prints the zip to send:
-
-```text
-Zip to send: /home/you/hazina-review-out.zip
-```
-
-Then email the zip to **[partners@hazinalabs.com](mailto:partners@hazinalabs.com)**.
-
-## If it stops
+### If it stops
 
 The last lines always say what happened and what to type next.
 
@@ -171,6 +161,16 @@ The last lines always say what happened and what to type next.
 | Anything else | Email `hazina-review-out/hazina-review-log.txt` to [partners@hazinalabs.com](mailto:partners@hazinalabs.com). It holds versions, timings and errors, never your code or sign-in details. |
 
 `--resume` only redoes what did not finish, with the same settings as before.
+
+## 5. Send
+
+At the end it prints the zip to send:
+
+```text
+Zip to send: /home/you/hazina-review-out.zip
+```
+
+Then email the zip to **[partners@hazinalabs.com](mailto:partners@hazinalabs.com)**.
 
 ## Options
 
