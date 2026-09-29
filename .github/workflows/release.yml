@@ -1,0 +1,53 @@
+name: Release
+
+# PyPI trusted publishing will be added to this workflow once the repository is public;
+# until then, releases are GitHub Releases with the built artifacts attached.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cross-platform:
+    # macOS and Windows are tested here, once per release, rather than on every push.
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e '.[dev]'
+      - name: Test
+        run: pytest -q
+
+  build-and-release:
+    needs: cross-platform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: pip install build
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Checksum distributions
+        run: sha256sum dist/* > dist/SHA256SUMS
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

@@ -1,0 +1,40 @@
+You are taking an EXHAUSTIVE CENSUS of the candidate tasks this git repository could support for training and evaluating a coding model. Its working tree is your current directory. You have no shell and no git: use your Read, Grep and Glob tools on the source code, and read the repository's development history from the files prepared for you under {history} -- {history}/HISTORY-OVERVIEW.md lists every substantive commit with its date, changed files and churn, and {history}/commit-diffs/ holds the full patch for each of them.
+
+This is a census, not a top-N list. Enumerate every idea that clears the bar, up to {n}. The count for each task type is simply how many ideas you listed for it, so never report a number you did not enumerate, and never pad: an ordinary idea listed to reach a round number makes every count less useful. Prefer long-horizon, multi-file, nuanced problems that pure metrics would miss: subtle algorithms, cross-module features, interesting real bug fixes. Every idea MUST come from code or commits you actually read — cite real file paths and commit SHAs and never invent one, because an idea resting on a file that is not there describes some other repository. Those citations stay on this machine. Budget 15-25 minutes and as many tool calls as the repository warrants.
+
+CLASSIFY EACH IDEA into exactly one `task_type`, using the type that describes how the task would be BUILT. Every type names an exercise that would be set up against a SANDBOXED COPY of a codebase like this one for a coding model to attempt. None of them is a change anyone makes to the owner's repository, and this tool writes nothing to it:
+  net_new        a substantial capability this codebase does not have yet but is shaped to support
+  bug_repair     reproduce and fix a subtle defect the history actually fixed
+  repo_evolution a structural change the codebase went through or needs: a migration, a split, an interface redesign
+  agentic        a nuanced long-horizon task that fits none of the above
+
+LEAVE THE OWNER'S CREDENTIALS ALONE. This is a census of engineering work, and a repository's own keys and passwords are no part of that: do not open environment files, credential files or key material, and do not build a task around them. The same holds if credential material reaches you another way -- inside a commit diff, a log, or a file you opened for a different reason -- because history contains whatever was once committed. Do not copy it, paraphrase it, or record where it was; none of that is a measurement and none of it belongs in your answer. This is about not collecting the owner's secrets, not about hiding anything from them: the run tells the owner how many files were withheld on this basis, and they read the whole artifact before deciding to send it.
+
+ONE FIELD LEAVES THIS MACHINE: `summary`. Everything else you return stays here and is counted, never quoted. `summary` is one sentence describing the ENGINEERING SHAPE of the work — what kind of problem it is, in words that would be just as true of the same problem in somebody else's codebase.
+  GOOD  add cursor pagination to a list endpoint backed by a relational store
+  GOOD  make a retry path idempotent so a replayed request cannot double-apply a balance change
+  GOOD  split a synchronous batch job into resumable chunks that survive a restart mid-run
+  BAD   fix the pagination bug in api/routes/orders.py     (names a path)
+  BAD   refactor OrderStateMachine to be reentrant          (names a symbol)
+  BAD   add Stripe webhook replay protection                (names a product)
+  BAD   improve the Acme billing reconciler                 (names a company)
+Rules for `summary`, all enforced — a summary that breaks one is DISCARDED and the idea is counted without a description:
+  * no file name, path, module name, function, class, variable or commit hash
+  * no product, company, service or project name; no domain proper noun
+  * at most 40 words; plain lower case except the first word
+  * no acronyms, no quotes, no parentheses, brackets, braces, slashes or dotted names
+  * no underscores and no capital letters inside a word
+
+Return your answer as STRICT JSON and NOTHING else: a JSON array of up to {n} objects, as many as genuinely clear the bar, each with these keys:
+  "title": short task title (string)
+  "task_type": one of the four types above (string)
+  "summary": the one sentence described above (string)
+  "files": relevant file paths (array of strings)
+  "symbols": relevant functions/classes/symbols (array of strings)
+  "subsystems": subsystems/modules the task spans (array of strings)
+  "source_commit_shas": grounding commit SHAs, may be empty (array of strings)
+  "complexity": one of "Small", "Medium", "Large" (string)
+  "est_loc": estimated lines of code to write/rewrite (integer)
+  "has_strong_tests": whether the repo has strong tests pinning this behavior (bool)
+  "test_files": relevant test file paths — only tests that ALREADY EXIST (array of strings)
+Output only the JSON array.

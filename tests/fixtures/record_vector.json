@@ -1,0 +1,11 @@
+{
+  "key": "test-key-not-for-production",
+  "files": {
+    "codebase_repo_mining.json": "{\n  \"total_candidates\": 3\n}\n",
+    "codebase_repos.csv": "a,b\n1,2\n",
+    "codebase_repos.json": "{\n  \"record_id\": \"55a0b1a161c109b2db420c9e9d8ef7c3\",\n  \"loc\": 1234\n}\n",
+    "measurement.json": "{\n  \"measurer_version\": \"x\"\n}\n"
+  },
+  "record_id": "55a0b1a161c109b2db420c9e9d8ef7c3",
+  "stripped_codebase_repos_json": "{\n  \"loc\": 1234\n}\n"
+}

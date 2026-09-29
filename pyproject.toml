@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hazina-review"
+dynamic = ["version"]
+description = "Model-assisted repository review, run under the owner's account."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Sandeep Mallareddy", email = "partners@hazinalabs.com" }]
+classifiers = [
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Quality Assurance",
+  "Intended Audience :: Developers",
+]
+dependencies = [
+  "tree-sitter==0.26.0",
+  "tree-sitter-language-pack==1.13.5",
+  "PyYAML==6.0.3",
+]
+
+[project.urls]
+Homepage = "https://hazinalabs.com"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "pre-commit>=3", "build>=1", "pip-audit>=2"]
+
+[project.scripts]
+hazina-scan = "hazina_scan.cli:main"
+hazina-review = "hazina_review.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hazina_scan*", "hazina_review*"]
+
+[tool.setuptools.package-data]
+hazina_review = ["prompts/*.txt"]
+
+[tool.setuptools.dynamic]
+version = { attr = "hazina_review.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: makes a real provider call and costs money",
+    "sandbox_check: exercises the provider sandbox check instead of assuming it works",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# docs are not part of the package
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

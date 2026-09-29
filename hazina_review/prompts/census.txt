@@ -1,0 +1,186 @@
+You are producing an exhaustive technical inventory of ONE repository for due diligence. Report
+what is actually in the codebase and its history. Inventory only -- do not grade the engineering.
+
+LEAVE THE OWNER'S CREDENTIALS ALONE. Do not open environment files, credential files, key
+material or certificates, do not read them, and do not inventory work about them. This inventory
+is about engineering material; a repository's credentials are not ours to look at and never appear
+in the output. If a file looks like it holds credentials, skip it and move on.
+
+That applies just as much to credential material that reaches you by another route -- inside a
+commit diff, a log, a fixture, or a file you opened for a different reason. This inventory asks you
+to read history, and history contains whatever was once committed. If a key, a password, a token or
+a connection string appears in front of you, do not copy it, paraphrase it, or note where it was:
+none of it is a measurement, so none of it belongs in your answer.
+
+To be plain about why: the point is that we do not COLLECT the owner's secrets, not that anything
+is kept from them. The owner runs this themselves, the run reports how many files were withheld
+from the history on this basis, and they read the whole artifact before deciding whether to send
+it. Nothing here searches their code for credentials, and no credential-shaped string is ever
+matched, counted or recorded.
+
+Read the working tree AND the repository's development history. You have no shell and no `git`:
+the history has been prepared for you as files, under {history}. Read
+{history}/HISTORY-OVERVIEW.md first -- it lists every substantive commit across every ref with
+its date, its changed files and its churn -- then open the full patches in
+{history}/commit-diffs/ for the commits that look substantive. Open the densest source files in
+the working tree as well. Budget 25-40 minutes and as many tool calls as the repository warrants
+-- a large codebase deserves more looking than a small one.
+
+COUNT ONLY WHAT IS SUBSTANTIAL. There is no cap and no round number to stop at, but there is a
+bar, and it is high. An instance qualifies only if it is INTERESTING, NUANCED, COMPLEX, LARGE and
+LONG-HORIZON -- work that would occupy a competent engineer across many steps, touch several parts
+of the system, and demand real understanding before the first line is written. Ask of every
+candidate: would solving this make a strong coding model measurably better at engineering? If the
+answer is no, leave it out.
+
+SIZE AND HORIZON ARE PART OF THE BAR, not separate from it. A subtle one-line fix can be difficult
+and still fail this test, because there is no distance to travel: nothing to plan, no intermediate
+state to hold, no sequence of decisions that build on each other. What qualifies is work with
+extent -- several interacting pieces, a design that has to be worked out before it is written, and
+a path from start to finish long enough that going astray early shows up late.
+
+DISQUALIFY, no matter how much typing they represent: anything mechanical or repetitive; anything
+a capable engineer would finish in one sitting without pausing to plan; renames, reformatting,
+dependency bumps, configuration edits, boilerplate, scaffolding, generated code; adding a field,
+an endpoint or a handler that follows an existing pattern; test-only changes that assert existing
+behaviour; straightforward wiring between components that already have interfaces; and small
+localised fixes, however clever, that touch one place and are done.
+
+QUALIFY only where several of these hold together: the correct behaviour is genuinely non-obvious
+and a plausible-looking solution would be quietly wrong; it requires holding several interacting
+parts in mind at once; it turns on subtle invariants, ordering, boundary, precision or concurrency
+properties; it demands understanding WHY the existing design is the way it is before changing it;
+it spans multiple modules or layers; and finishing it well takes a sequence of decisions rather
+than a single edit.
+
+Most repositories hold a handful of these, not dozens. Three genuinely substantial, long-horizon
+instances is a far better answer than thirty ordinary ones, and padding a category with routine or
+trivially-scoped work is the single worst thing you can do here. A category with nothing that
+clears the bar returns an empty list.
+
+Report the following.
+
+1. THEMES -- what this software does, in domain terms. Two to five short phrases, e.g.
+   "payments", "fleet logistics", "identity and access", "medical billing". **Two to five words
+   each, not a sentence, all lower case.** Describe the domain, not the stack, and never name a
+   product or a company -- a theme that names one is discarded.
+
+2. SELF-CONTAINMENT, 0-4 -- can this repository's behaviour be exercised inside itself? 4 = a
+   standalone application. 0 = one slice of a mesh that needs several sibling services and a
+   message broker before it does anything.
+
+3. NINE CATEGORIES OF MATERIAL. For each, list only the instances that clear the bar
+   above, most substantial first, one plain-English sentence each. The count for a category is simply how
+   many sentences you listed for it -- do not report a number you did not enumerate. Each
+   sentence must make the substance visible: say what is nuanced about it and how far it reaches,
+   not merely what it is.
+
+   a. COMPLEX LOGIC LOCI -- distinct places in the CURRENT tree holding substantial, non-obvious
+      logic: invariants that must hold, state machines, monetary or tax arithmetic, scheduling,
+      reconciliation, permission models, concurrency, parsing, retry and idempotency handling.
+      Exclude CRUD handlers, glue, configuration, generated code and thin wrappers. A locus is
+      one coherent unit -- a module or closely-coupled cluster -- not one file per count.
+
+   b. SUBSTANTIAL FEATURES -- capabilities built across MULTIPLE commits that represent real,
+      non-decomposable work. Not a rename, not a dependency bump, not a reformatting pass.
+
+   c. NOTABLE DEFECT REPAIRS -- fixes that addressed something genuinely subtle: a race, an
+      off-by-one at a boundary, a rounding or precision error, a broken invariant, a mishandled
+      failure path. A typo fix or a version bump is not notable. Say which shipped a regression
+      test in the same commit.
+
+   d. SELF-CONTAINED UNITS OF WORK -- pieces of work this codebase could support as a stand-alone
+      assignment, where the scope can be stated without reference to the rest of the system,
+      completing it demands real reasoning rather than mechanical edits, and correctness can be
+      settled by observing behaviour rather than by opinion.
+
+   e. NET-NEW CAPABILITIES -- substantial things this codebase does not do yet but could be
+      built here. Both kinds count equally, and the maturity of the codebase is NOT a
+      qualification: an extension the existing abstractions are already shaped to support, and a
+      genuinely new subsystem this codebase's purpose calls for, built on top of whatever is
+      present. A thin or early-stage repository can hold as many of these as a mature one -- often
+      more, because more of its intended surface is still unbuilt. Judge the task, not the state
+      of the code around it.
+
+      The only requirement is that the work belongs to THIS repository: it must fit the domain
+      and purpose the code is evidently for, and be built on what is here. A task with no
+      connection to what this codebase is trying to do is not a candidate no matter how large it
+      is. Everything else about the difficulty bar still applies -- these must be substantial,
+      long-horizon pieces of work, not a screen or an endpoint.
+
+      List these as thoroughly as any other category; a repository is often shaped to support far
+      more of them than it has already built.
+
+   f. REPOSITORY EVOLUTIONS -- structural changes the history actually went through: a migration
+      between frameworks, storage engines, protocols or languages; an architectural split or
+      merge; an interface redesign carried across many files; a versioning or compatibility break.
+
+   g. PERFORMANCE AND SCALE WORK -- changes made to make something faster, cheaper, or able to
+      handle more: caching layers, query or index work, batching, pagination, memory reduction,
+      concurrency introduced for throughput.
+
+   h. CORRECTNESS AND SAFETY HARDENING -- validation, authorisation, input sanitisation, error
+      propagation, transactional integrity, idempotency, rate limiting, audit logging, and fixes
+      to security-relevant handling.
+
+   i. INTEGRATION AND INTERFACE WORK -- third-party service integrations, API or schema changes,
+      data-format handling, protocol adapters, and the compatibility work each demanded.
+
+   Categories may overlap in subject matter -- one commit can be both a defect repair and
+   hardening. Count it wherever it genuinely belongs; do not force a single home. But never list
+   the same instance twice WITHIN one category.
+
+FORMAT OF EVERY SENTENCE -- read this carefully. Every sentence is checked before it is kept, and
+a sentence that breaks any rule below is DISCARDED WHOLE, taking its instance out of the count
+with it. Nothing is patched up for you.
+
+**Describe the behaviour. Never name the code.** No file names, no paths, no function, class,
+method or variable names, no commit hashes, no code fragments, no backticks, no braces or arrows.
+Write as though explaining the system to a non-engineer who will never see the source.
+
+The mechanical rules, all of them enforced:
+
+  * At most 40 words.
+  * Plain lower case except the first word of a sentence. A capital anywhere else reads as a
+    product, company or class name and is rejected.
+  * No acronyms or all-capital words at all.
+  * No quotation marks, backticks, parentheses, brackets, braces, slashes, equals signs or
+    dotted.names of any kind.
+  * No word containing an underscore, and no word with a capital in the middle.
+
+  GOOD  "A settlement reconciler that matches ledger entries against bank statements with
+         per-currency tolerance windows and flags unmatched residuals for review."
+  GOOD  "Fare calculation applying tiered surge multipliers, minimum-fare floors and rounding
+         rules that differ by market."
+  GOOD  "A fix to a boundary condition where the last item in a paginated result was dropped
+         whenever the page size exactly divided the total."
+
+  BAD   "The reconcile.py module handles this."            (names a file)
+  BAD   "calculateFare() applies the multipliers."          (names a function)
+  BAD   "Fixed in commit a3f9c21."                          (names a commit)
+  BAD   "See the OrderStateMachine class."                  (names a class)
+
+Every BAD example above would be thrown away, and that instance would vanish from the count --
+which is worse than a plainly-worded description.
+
+Ground everything in what you actually opened. If a category is genuinely empty, return an empty
+list -- zero is informative and legitimate, and padding is worse than a low count.
+
+Return ONLY a JSON object, no prose around it. Every list is UNBOUNDED:
+{"themes": ["..."],
+  "self_contained": <int 0-4>,
+  "complex_logic": ["one sentence per locus", "..."],
+  "substantial_features": ["one sentence per feature", "..."],
+  "defect_repairs": ["one sentence per repair", "..."],
+  "defect_repairs_with_regression_test": <int, how many of the above shipped a test>,
+  "work_units": ["one sentence per unit of work", "..."],
+  "net_new_capabilities": ["one sentence per capability", "..."],
+  "repo_evolutions": ["one sentence per structural change", "..."],
+  "performance_work": ["one sentence per change", "..."],
+  "hardening_work": ["one sentence per change", "..."],
+  "integration_work": ["one sentence per change", "..."],
+  "material_summary": "two or three sentences on what this codebase holds, same rules",
+  "what_i_could_not_assess": "one short sentence, same rules, or empty"}
+
+The last two fields obey every sentence rule above. `what_i_could_not_assess` is one sentence at
+most: say what stopped you, not what you saw on the way.
