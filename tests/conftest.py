@@ -25,12 +25,36 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+#: A commit starts `git maintenance run --auto --detach`, and since git 2.54 its default
+#: strategy repacks even a small repository: a process left running after the commit that
+#: deletes directories under `.git` while a test walks the tree (a walk that met one gone
+#: reported "could not walk tree" on Python 3.11 and 3.13). The repositories built here are
+#: never maintained, whatever git the machine has.
+NO_AUTO_MAINTENANCE = {
+    "GIT_CONFIG_COUNT": "2",
+    "GIT_CONFIG_KEY_0": "maintenance.auto",
+    "GIT_CONFIG_VALUE_0": "false",
+    "GIT_CONFIG_KEY_1": "gc.auto",
+    "GIT_CONFIG_VALUE_1": "0",
+}
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _no_auto_maintenance():
+    """The same for every git a test starts with the ambient environment."""
+    with pytest.MonkeyPatch.context() as patch:
+        for name, value in NO_AUTO_MAINTENANCE.items():
+            patch.setenv(name, value)
+        yield
+
+
 def _git(repo: Path, *args: str, env: dict | None = None) -> str:
     base = {
         "PATH": os.environ["PATH"],
         "HOME": str(repo.parent),
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
+        **NO_AUTO_MAINTENANCE,
     }
     if env:
         base.update(env)

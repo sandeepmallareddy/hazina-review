@@ -1,8 +1,37 @@
 import re
 
+import pytest
+
 from hazina_review import brief
 from hazina_scan import history
 from tests.conftest import _git, make_repo, work
+
+
+@pytest.fixture(scope="module")
+def git_prints_withheld_only_commits(tmp_path_factory):
+    """Whether the installed git prints anything for a commit whose every change is withheld.
+
+    git 2.43 answers nothing, and 2.55 prints the commit's header lines with no diff under
+    them. The brief writes whatever git answers, so a test of such a commit asks the git it
+    runs with rather than assuming one.
+    """
+    keys = {"msg": "keys", "files": {".env": "K=1\n" * 12}}
+    root = tmp_path_factory.mktemp("probe")
+    repo = make_repo(root, {}, [{"msg": "one", "files": work(1)}, keys])
+    sha = _git(repo, "rev-parse", "HEAD").strip()
+    answer = brief.run_git(
+        repo, "show", sha, brief._PATCH_FORMAT, "--date=short", "--", *brief._EXCLUDE_PATHSPECS
+    )
+    assert "diff --git" not in answer and "K=1" not in answer
+    return bool(answer.strip())
+
+
+def _header_only(text, sha):
+    """A patch of a commit git printed only the header lines of, with the withheld note."""
+    head, _, rest = text.partition("\n\n")
+    return (
+        head.startswith(f"{sha}\n") and len(head.splitlines()) == 3 and rest == brief._WITHHELD_NOTE
+    )
 
 
 def _everything_written(out):
@@ -89,7 +118,7 @@ def test_committed_credential_never_reaches_the_brief(tmp_path, git_repo_with_en
 
 
 def test_credential_content_stays_out_wherever_its_own_name_is_credential_shaped(
-    tmp_path, git_repo_with_credential_history
+    tmp_path, git_repo_with_credential_history, git_prints_withheld_only_commits
 ):
     out = tmp_path / "brief"
     result = brief.write_brief(git_repo_with_credential_history, out)
@@ -99,12 +128,18 @@ def test_credential_content_stays_out_wherever_its_own_name_is_credential_shaped
     assert sorted(set(re.findall(r"LEAK_\w+", body))) == ["LEAK_CRED_DIR", "LEAK_ENV_DIRECTORY"]
     # the ordinary files beside them are still there, so the patches are not simply empty
     assert "+e3_0 = 0" in body
-    # three of the seven commits touch nothing but withheld paths, and git has nothing to say
-    # about those: they get no patch, rather than an empty one
+    # three of the seven commits touch nothing but withheld paths
     assert result["commits_substantive"] == 7
-    assert result["patches_written"] == 4 and result["patches_empty"] == 3
-    assert _numbers(out) == [0, 3, 5, 6]
-    assert result["credential_paths_excluded"] == 3
+    if git_prints_withheld_only_commits:
+        # this git prints their header lines, so they get those and the note, and no diff
+        assert result["patches_written"] == 7 and result["patches_empty"] == 0
+        assert _numbers(out) == [0, 1, 2, 3, 4, 5, 6]
+        assert result["credential_paths_excluded"] == 6
+    else:
+        # this git has nothing to say about them: they get no patch, rather than an empty one
+        assert result["patches_written"] == 4 and result["patches_empty"] == 3
+        assert _numbers(out) == [0, 3, 5, 6]
+        assert result["credential_paths_excluded"] == 3
 
 
 def test_the_overview_names_no_credential_shaped_file(tmp_path, git_repo_with_credential_history):
@@ -332,9 +367,27 @@ def test_a_pathspec_git_rejects_leaves_every_patch_blank(
     assert len(_rows(out)) == 40
 
 
-def test_a_commit_of_withheld_paths_only_gets_no_patch(tmp_path, git_repo_with_credential_history):
-    result = brief.write_brief(git_repo_with_credential_history, tmp_path / "brief")
-    assert result["patches_empty"] == 3
+def test_a_commit_of_withheld_paths_only_gets_what_git_prints_for_it(
+    tmp_path, git_repo_with_credential_history, git_prints_withheld_only_commits
+):
+    out = tmp_path / "brief"
+    result = brief.write_brief(git_repo_with_credential_history, out)
+    alone = [sha for sha in result["chosen"] if sha not in result["patched"]]
+    headers = {
+        sha: (out / brief.DIFF_SUBDIR / f"{index:04d}-{sha[:12]}.diff")
+        for index, sha in enumerate(result["chosen"])
+        if sha in result["patched"]
+    }
+    headers = {
+        sha: p.read_text() for sha, p in headers.items() if "diff --git" not in p.read_text()
+    }
+    if git_prints_withheld_only_commits:
+        # the header lines git printed, the note, and nothing of the files
+        assert result["patches_empty"] == 0 and alone == [] and len(headers) == 3
+        assert all(_header_only(text, sha) for sha, text in headers.items())
+    else:
+        # a blank answer: no patch, rather than an empty one
+        assert result["patches_empty"] == 3 and len(alone) == 3 and headers == {}
 
 
 def test_git_metadata_without_a_diff_is_written_as_it_came(
@@ -345,7 +398,8 @@ def test_git_metadata_without_a_diff_is_written_as_it_came(
 
     def with_header_on_filtered_commits(repo, *args, **kwargs):
         answer = real(repo, *args, **kwargs)
-        if args[0] == "show" and not answer:
+        # Whichever the installed git prints for them, nothing or only the header lines.
+        if args[0] == "show" and "diff --git" not in answer:
             return "2026-09-26\nwithheld files\n\n"
         return answer
 
@@ -378,12 +432,22 @@ def test_a_commit_that_changes_no_file_is_not_a_substantive_one(tmp_path, repo_b
     assert result["patches_written"] == 1 and result["patches_empty"] == 0
 
 
-def test_a_withheld_file_with_an_awkward_name_is_still_empty_by_design(tmp_path, repo_builder):
+def test_a_withheld_file_with_an_awkward_name_is_still_withheld(
+    tmp_path, repo_builder, git_prints_withheld_only_commits
+):
     text = "K = 1\n" * 12
     keys = {"msg": "keys", "files": {"clés privées/.env": text, "clés privées/b/.env": text}}
     repo = repo_builder({}, commits=[{"msg": "one", "files": work(1)}, keys])
-    result = brief.write_brief(repo, tmp_path / "brief")
-    assert result["patches_empty"] == 1
+    out = tmp_path / "brief"
+    result = brief.write_brief(repo, out)
+    assert "K = 1" not in _everything_written(out)
+    newest = result["chosen"][0]
+    if git_prints_withheld_only_commits:
+        assert result["patches_empty"] == 0
+        patch = out / brief.DIFF_SUBDIR / f"0000-{newest[:12]}.diff"
+        assert _header_only(patch.read_text(), newest)
+    else:
+        assert result["patches_empty"] == 1 and newest not in result["patched"]
 
 
 # --- every git call has the same long ceiling, whatever the run has left ------------------------

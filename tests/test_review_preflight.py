@@ -186,9 +186,10 @@ def test_a_sandbox_that_reads_passes(monkeypatch):
     assert preflight.check_sandbox(SECOND, "/usr/bin/y").state == preflight.OK
 
 
-def test_a_sandbox_that_cannot_read_fails_with_the_apparmor_fix(monkeypatch):
-    monkeypatch.setattr(registry.sys, "platform", "linux")
-    monkeypatch.setattr(registry, "sandbox_reads", lambda *a: False)
+def test_a_sandbox_that_cannot_read_fails_with_the_apparmor_fix(monkeypatch, tmp_path):
+    # The AppArmor switch and the bubblewrap on PATH are this test's own, not the machine's.
+    _restricted(monkeypatch, tmp_path)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: "/usr/bin/bwrap")
     result = preflight.check_sandbox(SECOND, "/usr/bin/y")
     assert result.state == preflight.FAILED
     assert "AppArmor" in result.fix and f"{SECOND} sandbox -- ls" in result.fix
