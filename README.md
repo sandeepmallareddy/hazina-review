@@ -145,8 +145,8 @@ hazina-review --all ~/hazina
 
 - It usually takes 15 to 60 minutes per repository. It prints a line every minute so you
   know it is still working.
-- The AI part is billed to your Claude or Codex account: about $5 to $8 for a small
-  repository, more for a large one. The build and tests cost nothing extra.
+- The AI part is billed to your Claude or Codex account. The build and tests cost nothing
+  extra.
 
 ### If it stops
 
