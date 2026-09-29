@@ -106,12 +106,12 @@ The AI tool's use is billed to that account: a subscription's usage limits, or A
 ## 2. Install
 
 ```bash
-pipx install git+https://github.com/sandeepmallareddy/hazina-review.git@v0.1.1
+pipx install git+https://github.com/sandeepmallareddy/hazina-review.git@v0.1.2
 ```
 
 Or download the `.whl` file from the
 [latest release](https://github.com/sandeepmallareddy/hazina-review/releases/latest) and run
-`pipx install ./hazina_review-0.1.1-py3-none-any.whl`.
+`pipx install ./hazina_review-0.1.2-py3-none-any.whl`.
 
 ## 3. Check your computer
 

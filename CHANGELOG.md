@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-29
+
 ### Added
 
 - `--all DIR` reviews every git repository directly inside one folder (one level, sorted by
