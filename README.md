@@ -156,10 +156,6 @@ At the end it prints the zip to send:
 Zip to send: /home/you/hazina-review-out.zip
 ```
 
-Before you send it, skim the short sentences inside. They are in each repository's
-`measurement.json` and `codebase_repo_mining.json`. If one names your company, a product, a
-customer or a person, don't send the zip: email us instead.
-
 Then email the zip to **[partners@hazinalabs.com](mailto:partners@hazinalabs.com)**.
 
 ## If it stops
