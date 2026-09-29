@@ -52,6 +52,9 @@ class Provider:
     #: whose model reads files by running commands there. None where file tools need no such
     #: sandbox.
     sandbox_check: tuple[str, ...] | None = None
+    #: Put ahead of both prompts, for a command whose tools differ from the ones the prompts
+    #: name. Empty when the prompts fit the command as they stand.
+    prompt_note: str = ""
     #: The subcommand that says whether the command is signed in, without calling a model.
     status: tuple[str, ...] = ()
     #: The key in the status command's JSON answer that holds the yes or no, or None when the
@@ -121,6 +124,17 @@ _KNOWN = (
         default_model="gpt-6-sol",
         probe=("exec", "--help"),
         sandbox_check=("sandbox", "--"),
+        # The prompts name Read, Grep and Glob tools and say there is no shell. This command
+        # reads files only through its shell, and taken at its word it ran no command and
+        # answered with an empty task list. So it is told how to read, before anything else.
+        prompt_note=(
+            "Note for this session: the Read, Grep and Glob tools named below are not "
+            "available here. Your shell is how you read: use read-only commands such as ls, "
+            "cat, head, sed -n, grep, rg and find on the current directory and on the history "
+            "files named below. Where the instructions below say there is no shell, read that "
+            "as: do not use git, and run nothing that changes anything. Everything else below "
+            "applies as written.\n\n"
+        ),
         status=("login", "status"),
         login=("login",),
         api_keys=("OPENAI_API_KEY",),
@@ -223,6 +237,11 @@ def sandbox_reads(executable: str, check: tuple[str, ...]) -> bool:
     except (subprocess.SubprocessError, OSError):
         return False
     return asked.returncode == 0 and _PROBE_TEXT.strip() in (asked.stdout or "")
+
+
+def prompt_note(provider: str) -> str:
+    """What goes ahead of both prompts for this provider; empty for most."""
+    return _known(provider).prompt_note
 
 
 def resolve(provider: str) -> str:

@@ -237,3 +237,11 @@ def test_the_first_command_and_other_platforms_are_not_checked(monkeypatch):
     monkeypatch.setattr(registry.sys, "platform", "win32")
     registry.isolation_flags(SECOND, f"/usr/bin/{SECOND}")
     assert calls == []
+
+
+def test_only_the_second_provider_gets_a_note_ahead_of_its_prompts():
+    assert registry.prompt_note(FIRST) == ""
+    note = registry.prompt_note(SECOND)
+    # it names the shell as the way to read, and says git and changes are not wanted
+    assert "shell" in note and "cat" in note and "git" in note
+    assert note.endswith("\n\n")

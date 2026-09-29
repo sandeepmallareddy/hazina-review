@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from hazina_review import prompts, sentences
+from hazina_review.providers import registry
 from hazina_review.providers.ask import Turn, ask, census_answer
 
 CATEGORIES = (
@@ -475,7 +476,7 @@ def collect(
     sleep = sleep or time.sleep
     jitter = jitter or random.random
     now = now or time.monotonic
-    asked = prompt(brief_dir)
+    asked = registry.prompt_note(provider) + prompt(brief_dir)
     budget = float(max(1, int(timeout)))
     ends = now() + budget
     enough = worth_starting(budget)

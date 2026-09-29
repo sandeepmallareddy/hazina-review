@@ -157,9 +157,13 @@ def _apparmor_restricts() -> bool:
         return False
 
 
-def _bundled_bwrap(provider: str, executable: str) -> Path | None:
-    """The bubblewrap the command ships with, found beside its own installation; else the
-    system's. The profile has to name the binary that actually runs."""
+def _bwrap_in_use(provider: str, executable: str) -> Path | None:
+    """The bubblewrap the command actually runs: the system's when there is one (traced on
+    Ubuntu 24.04, the command runs it even though it ships its own), otherwise the copy
+    bundled beside its installation. The profile has to name the program that runs."""
+    system = shutil.which("bwrap")
+    if system:
+        return Path(system)
     try:
         real = Path(os.path.realpath(executable))
     except (OSError, ValueError):
@@ -172,34 +176,39 @@ def _bundled_bwrap(provider: str, executable: str) -> Path | None:
             found = sorted(parent.glob(pattern))
             if found:
                 return found[0]
-    system = shutil.which("bwrap")
-    return Path(system) if system else None
+    return None
 
 
 def _sandbox_fix(provider: str, executable: str) -> str:
     other = registry.PROVIDERS[0]
     instead = f"Or run with `--provider {other}`, which needs no sandbox setup on this machine."
-    bwrap = _bundled_bwrap(provider, executable) if _apparmor_restricts() else None
+    bwrap = _bwrap_in_use(provider, executable) if _apparmor_restricts() else None
     if bwrap is None:
         return (
             "Allow programs to create user namespaces on this machine, then check with "
             f"`{provider} sandbox -- ls`.\n{instead}"
         )
     name = f"{provider}-bwrap"
+    target = f'\\"{bwrap}\\"' if " " in str(bwrap) else str(bwrap)
+    profile = f"/etc/apparmor.d/{name}"
+    # One command, one password prompt. Two lines pasted together let the second be read as
+    # the password for the first; and a here-document's closing word would not end it once
+    # pasted with the indentation it is shown with.
+    command = (
+        'sudo sh -c \'printf "%s\\n" "abi <abi/4.0>," "include <tunables/global>" '
+        f'"profile {name} {target} flags=(unconfined) {{" "  userns," "}}" > {profile} '
+        f"&& apparmor_parser -r {profile}'"
+    )
+    undo = f"sudo sh -c 'apparmor_parser -R {profile} && rm {profile}'"
     return "\n".join(
         [
             "This system's AppArmor stops the sandbox from creating user namespaces. An",
-            f"administrator can allow it for `{provider}`'s sandbox alone, once:",
+            "administrator can allow it for the sandbox program, once, with this one command:",
             "",
-            # One command per line, with no here-document: pasted with the indentation it is
-            # shown with, a here-document's closing word would not end it.
-            "  printf '%s\\n' 'abi <abi/4.0>,' 'include <tunables/global>' "
-            f"'profile {name} {bwrap} flags=(unconfined) {{' '  userns,' '}}' "
-            f"| sudo tee /etc/apparmor.d/{name} >/dev/null",
-            f"  sudo apparmor_parser -r /etc/apparmor.d/{name}",
+            f"  {command}",
             "",
-            f"Then check with `{provider} sandbox -- ls`. After updating `{provider}`, run this",
-            "check again: the path above can change.",
+            f"Then check with `{provider} sandbox -- ls`. To undo it later:",
+            f"  {undo}",
             instead,
         ]
     )

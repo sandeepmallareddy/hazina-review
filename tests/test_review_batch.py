@@ -633,3 +633,18 @@ def test_the_progress_files_temporary_name_is_never_written_through(tmp_path, no
     assert outside.read_text() == "PrivateNeverTouch"
     assert json.loads((out / support.PROGRESS_NAME).read_text())["repos"][0]["folder"] == "first"
     assert not list(out.glob("*.tmp*"))
+
+
+def test_one_repository_done_says_just_done(tmp_path):
+    repos = [support.Repo(path="/r/a", folder="a", state=support.DONE)]
+    lines, code = support.report(
+        {
+            "repos": repos,
+            "out_dir": tmp_path,
+            "provider": registry.PROVIDERS[0],
+            "model": "m",
+            "stop_kind": None,
+        },
+        io.StringIO(),
+    )
+    assert code == 0 and "Summary: done." in lines and "all 1" not in "\n".join(lines)

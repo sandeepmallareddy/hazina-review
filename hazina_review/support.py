@@ -316,7 +316,8 @@ def report(done: dict, stream=None) -> tuple[list[str], int]:
     # A count, then only what needs attention: a batch can be hundreds long, and a line per
     # repository buries the few that did not complete. The log keeps every one.
     if finished == len(repos):
-        return ["", f"Summary: all {_repositories(len(repos))} done."], 0
+        done = "done" if len(repos) == 1 else f"all {_repositories(len(repos))} done"
+        return ["", f"Summary: {done}."], 0
     counts = f"Summary: {finished} of {_repositories(len(repos))} done"
     counts += f", {len(unfinished)} incomplete" if unfinished else ""
     counts += f", {waiting} not started" if waiting else ""

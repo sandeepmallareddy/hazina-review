@@ -10,13 +10,98 @@ Questions: **[partners@hazinalabs.com](mailto:partners@hazinalabs.com)**
 
 ## 1. What you need
 
-- Python 3.11 or newer
-- `git`
-- **One** of these AI tools, installed and signed in:
-  - [Claude Code](https://claude.com/claude-code): sign in with `claude auth login`
-  - [Codex](https://developers.openai.com/codex/cli): sign in with `codex login`
+- Python 3.11 or newer, `git` and `pipx`
+- **One** AI tool, installed and signed in: **Claude Code** or **Codex**
 
 Claude Code is used by default. To use Codex, add `--provider codex` to the commands below.
+hazina-review is tested on macOS and Linux.
+
+Already have everything? Skip to [Install](#2-install). Otherwise, open the steps you need:
+
+<details>
+<summary><b>Python, git and pipx</b></summary>
+
+Check what you have:
+
+```bash
+python3 --version      # needs 3.11 or newer
+git --version
+pipx --version
+```
+
+Install what is missing:
+
+| | macOS ([Homebrew](https://brew.sh)) | Ubuntu / Debian |
+|---|---|---|
+| Python | `brew install python` | `sudo apt install python3` |
+| git | `brew install git` | `sudo apt install git` |
+| pipx | `brew install pipx` | `sudo apt install pipx` |
+
+Then run `pipx ensurepath` once and open a new terminal.
+
+</details>
+
+<details>
+<summary><b>Claude Code</b> (install and sign in)</summary>
+
+Install:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash      # macOS or Linux
+brew install --cask claude-code                     # or, on macOS with Homebrew
+```
+
+On Windows (PowerShell): `irm https://claude.ai/install.ps1 | iex`
+
+Sign in:
+
+```bash
+claude auth login
+```
+
+A browser window opens. Log in with a Claude Pro, Max, Team or Enterprise account, or with
+your Claude Console account. Check it worked:
+
+```bash
+claude auth status      # should say "loggedIn": true
+```
+
+Using an API key instead? Set `ANTHROPIC_API_KEY` in your terminal before you run the tool.
+
+</details>
+
+<details>
+<summary><b>Codex</b> (install and sign in)</summary>
+
+Install:
+
+```bash
+curl -fsSL https://chatgpt.com/codex/install.sh | sh     # macOS or Linux
+brew install --cask codex                                # or, on macOS with Homebrew
+npm install -g @openai/codex                             # or, with npm
+```
+
+Sign in:
+
+```bash
+codex login
+```
+
+Choose **Sign in with ChatGPT** and use a Plus, Pro, Business, Edu or Enterprise account.
+Check it worked:
+
+```bash
+codex login status      # should say you are logged in
+```
+
+Using an API key instead? `printenv OPENAI_API_KEY | codex login --with-api-key`
+
+On Ubuntu 23.10 and later, Codex also needs a one-time setup by an administrator. The check in
+step 3 prints the exact commands.
+
+</details>
+
+The AI tool's use is billed to that account: a subscription's usage limits, or API charges.
 
 ## 2. Install
 
@@ -96,9 +181,6 @@ The last lines always say what happened and what to type next.
 | `--check` | Only check your computer. Add `--skip-model-check` to make it free. |
 
 `hazina-review --help` lists every option.
-
-On some Linux systems (Ubuntu 23.10 and later), Codex needs a one-time setup by an
-administrator. The check prints the exact commands. Claude needs no setup.
 
 ## Privacy
 

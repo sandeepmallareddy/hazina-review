@@ -571,19 +571,32 @@ def _installed_with_its_own_bwrap(tmp_path):
     return exe, bwrap
 
 
-def test_a_blocked_sandbox_gets_the_exact_apparmor_commands_and_another_way(monkeypatch, tmp_path):
+def test_a_blocked_sandbox_names_the_systems_bubblewrap_when_there_is_one(monkeypatch, tmp_path):
+    # Traced on Ubuntu 24.04: the command runs the system's bwrap even though it ships its
+    # own, so that is the program the profile has to name.
     _restricted(monkeypatch, tmp_path)
-    exe, bwrap = _installed_with_its_own_bwrap(tmp_path)
+    exe, bundled = _installed_with_its_own_bwrap(tmp_path)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: "/usr/bin/bwrap")
     result = preflight.check_sandbox(SECOND, str(exe))
     assert result.state == preflight.FAILED
-    # the profile names the sandbox binary this command actually runs, and the commands load it
-    assert f"profile {SECOND}-bwrap {bwrap} flags=(unconfined)" in result.fix
-    # no here-document: its closing word would not end it once pasted with indentation
-    assert "<<" not in result.fix
-    assert "userns," in result.fix
-    assert "sudo apparmor_parser -r" in result.fix
+    assert f"profile {SECOND}-bwrap /usr/bin/bwrap flags=(unconfined)" in result.fix
+    assert str(bundled) not in result.fix
+
+
+def test_a_blocked_sandbox_gets_one_command_to_paste_and_how_to_undo_it(monkeypatch, tmp_path):
+    _restricted(monkeypatch, tmp_path)
+    exe, bundled = _installed_with_its_own_bwrap(tmp_path)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: None)
+    result = preflight.check_sandbox(SECOND, str(exe))
+    # with no system bubblewrap, the command's own copy is the one that runs
+    assert f"profile {SECOND}-bwrap {bundled} flags=(unconfined)" in result.fix
+    fix_line = next(line for line in result.fix.splitlines() if "apparmor_parser -r" in line)
+    # one command, one password prompt: pasting two lines let the second be read as the
+    # password for the first
+    assert fix_line.strip().startswith("sudo sh -c ") and fix_line.count("sudo") == 1
+    assert "userns," in fix_line and "<<" not in result.fix
+    assert "apparmor_parser -R" in result.fix  # how to undo it
     assert f"{SECOND} sandbox -- ls" in result.fix
-    # and a way to run now, with no setup at all
     assert f"--provider {FIRST}" in result.fix
 
 

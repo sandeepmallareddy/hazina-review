@@ -6,6 +6,7 @@ from pathlib import Path
 
 from hazina_review import prompts, sentences
 from hazina_review.lanes.census import NO_TURN, classify, envelope_error
+from hazina_review.providers import registry
 from hazina_review.providers.ask import Turn, ask, mining_answer
 
 TASK_TYPES = ("net_new", "agentic", "bug_repair", "repo_evolution")
@@ -159,7 +160,8 @@ def collect(
     """The task list, as `(block, answer)`. `outcome`, when given, is filled as the census
     fills it: the failure kind (None when the list was read) and the exit status."""
     outcome = {} if outcome is None else outcome
-    turn = ask(provider, model, prompt(n, brief_dir), repo, [brief_dir], timeout)
+    asked = registry.prompt_note(provider) + prompt(n, brief_dir)
+    turn = ask(provider, model, asked, repo, [brief_dir], timeout)
     outcome.update(kind=None, returncode=turn.returncode)
     answer = mining_answer(turn.stdout, provider) if turn.ended == "exited" else None
     if turn.ended != "exited" or turn.returncode != 0 or answer is None:
