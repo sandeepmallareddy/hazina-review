@@ -53,6 +53,25 @@ def _provider_checks_pass(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _builds_nothing_unless_asked():
+    """The command line runs the build check by default, and the build check executes the
+    repository's own install and test commands. The tests that drive the command line are
+    about something else, so a run they start without a build flag builds nothing; the tests
+    of the build check put the real default back, or name a level. Imported by every test file
+    that drives the command line.
+
+    Set and put back by hand rather than with `monkeypatch`: asking for that fixture here
+    would change the order in which other fixtures' own replacements are undone.
+    """
+    was = cli.DEFAULTS["build_level"]
+    cli.DEFAULTS["build_level"] = "none"
+    try:
+        yield
+    finally:
+        cli.DEFAULTS["build_level"] = was
+
+
 @pytest.fixture
 def ready(monkeypatch):
     """Past the two stop conditions, with a provider that answers one usable sentence."""
@@ -204,12 +223,22 @@ def test_the_measurement_is_step_ones_with_one_block_added(ready, tmp_path, py_r
     material = written.pop("material")
     for document in (written, measurement):
         document.pop("measured_at")
+        document.pop("measurer_version")
     assert written == measurement
     assert material["scored"] is True and material["minable_ideas"]["complex_logic"] == [GOOD]
     # the record id is this tool's own, the one field step 1's row does not have
     stamped = (out / py_repo.name / "codebase_repos.json").read_bytes()
     written_row = json.loads(record.strip(stamped))
     assert set(written_row) == set(row)
+
+
+def test_every_file_a_review_writes_carries_this_tools_version(ready, tmp_path, py_repo):
+    out = tmp_path / "o"
+    _review(py_repo, out)
+    stamp = f"hazina-review@{run.__version__}"
+    for name in ("measurement.json", "codebase_repo_mining.json"):
+        written = json.loads((out / py_repo.name / name).read_text())
+        assert written["measurer_version"] == stamp, name
 
 
 def test_nothing_the_model_named_reaches_the_zip(ready, tmp_path, py_repo):
@@ -726,9 +755,8 @@ def test_review_archive_excludes_unrelated_files_in_a_reused_output_folder(
 # --- an earlier run's local files in a reused output folder ---------------------------------
 
 
-#: The first line of the local index an earlier hazina-review wrote. It wrote it with step 1's
-#: own index writer, so the line is the same one hazina-scan writes today.
-OLD_INDEX_HEADER = "# hazina-scan index -- LOCAL ONLY. This file is not included in hazina-out.zip."
+#: The first line of the local index an earlier hazina-review wrote, as the run recognises it.
+OLD_INDEX_HEADER = run.OLD_INDEX_FIRST_LINE
 
 
 def _old_review_folder(folder, detail="PrivateFindingNeverShare"):
@@ -741,11 +769,12 @@ def _old_review_folder(folder, detail="PrivateFindingNeverShare"):
 
 
 def _old_index(out, *folders):
-    """The local index as an earlier hazina-review wrote it, through step 1's writer."""
-    scan_cli.write_index(
-        out, [(folder.name, "repo-1", f"/home/me/{folder.name}", "measured") for folder in folders]
-    )
-    return out / "INDEX.local.txt"
+    """The local index as an earlier hazina-review (or the bundled scanner) wrote it."""
+    out.mkdir(parents=True, exist_ok=True)
+    rows = [f"{folder.name}\trepo-1\t/home/me/{folder.name}\tmeasured" for folder in folders]
+    index = out / "INDEX.local.txt"
+    index.write_text("\n".join((OLD_INDEX_HEADER, *scan_cli.INDEX_HEADER[1:], *rows)) + "\n")
+    return index
 
 
 def test_an_earlier_runs_local_files_are_removed_and_nothing_else_is_touched(
@@ -824,8 +853,8 @@ def test_a_detail_file_in_an_earlier_review_folder_is_removed(ready, tmp_path, p
 
 
 def test_the_scanners_own_index_is_left_and_said(ready, tmp_path, py_repo, capsys):
-    # hazina-scan writes the same file name, with its rows naming its own folders; a review
-    # into the same --out has no business removing it.
+    # The bundled scanner's command line wrote the same file, with its rows naming its own
+    # folders; a review into the same --out has no business removing it.
     out = tmp_path / "o"
     scanned = out / "scanned"
     scanned.mkdir(parents=True)
@@ -843,7 +872,9 @@ def test_the_scanners_own_index_is_left_and_said(ready, tmp_path, py_repo, capsy
     assert said[0].startswith("left ") and "does not look like this tool's output" in said[0]
 
 
-@pytest.mark.parametrize("text", ["my own index\n", "", "# hazina-scan index\nx\ty\n"])
+@pytest.mark.parametrize(
+    "text", ["my own index\n", "", OLD_INDEX_HEADER.split(" --")[0] + "\nx\ty\n"]
+)
 def test_an_index_with_another_first_line_is_left_and_said(ready, tmp_path, py_repo, capsys, text):
     out = tmp_path / "o"
     mine = _old_review_folder(out / py_repo.name)

@@ -138,7 +138,7 @@ def _reject_denied(env: dict[str, str]) -> dict[str, str]:
 
 
 @contextmanager
-def scratch_home(prefix: str = "hazina-scan-home-") -> Iterator[Path]:
+def scratch_home(prefix: str = "hazina-home-") -> Iterator[Path]:
     """Lend one run an empty directory to use as HOME, and delete it afterwards.
 
     Install and test commands look for `~/.npmrc`, `~/.gitconfig`, `~/.pypirc`, `~/.aws` and a

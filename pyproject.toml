@@ -32,9 +32,9 @@ Homepage = "https://hazinalabs.com"
 dev = ["pytest>=8", "ruff>=0.6", "pre-commit>=3", "build>=1", "pip-audit>=2"]
 
 [project.scripts]
-hazina-scan = "hazina_scan.cli:main"
 hazina-review = "hazina_review.cli:main"
 
+# hazina_scan is the measuring library the review is built on; it has no command of its own.
 [tool.setuptools.packages.find]
 include = ["hazina_scan*", "hazina_review*"]
 

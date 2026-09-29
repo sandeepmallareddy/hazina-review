@@ -225,7 +225,7 @@ def no_real_python(monkeypatch):
     shims a test sets up on its own PATH, making the outcome depend on what happens to be
     installed on whichever machine runs the suite.
     """
-    monkeypatch.setattr(sys, "executable", "/nonexistent/hazina-scan-test-python")
+    monkeypatch.setattr(sys, "executable", "/nonexistent/hazina-test-python")
     monkeypatch.setattr(runtime, "_SEARCH_GLOBS", {})
 
 

@@ -2,6 +2,7 @@ import pytest
 
 from hazina_review import __version__, cli, preflight, run
 from hazina_review.providers.registry import DEFAULT_MODELS, PROVIDERS
+from tests.test_review_run import _builds_nothing_unless_asked  # noqa: F401 -- fixture
 
 
 @pytest.fixture(autouse=True)
@@ -55,9 +56,9 @@ def test_a_model_named_on_the_command_line_is_the_one_used(monkeypatch, tmp_path
     assert _asked_for(monkeypatch, tmp_path, "--model", "m1.5")["model"] == "m1.5"
 
 
-def test_second_provider_requires_an_explicit_model(tmp_path, capsys):
-    assert cli.main([str(tmp_path), "--provider", PROVIDERS[1]]) == 2
-    assert "requires --model" in capsys.readouterr().err
+def test_second_provider_uses_its_pinned_model_when_none_is_named(monkeypatch, tmp_path):
+    chosen = _asked_for(monkeypatch, tmp_path, "--provider", PROVIDERS[1])
+    assert chosen["provider"] == PROVIDERS[1] and chosen["model"] == "gpt-6-sol"
 
 
 def test_second_provider_passes_the_named_model(monkeypatch, tmp_path):

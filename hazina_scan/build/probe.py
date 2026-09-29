@@ -1,6 +1,6 @@
 """Execute a repository's own install, build, discovery, test and coverage steps and summarise them.
 
-Most of hazina-scan only reads a checkout and infers from what is there. This module is the
+Most of this package only reads a checkout and infers from what is there. This module is the
 exception: it launches the subprocesses a repository already defines for itself, all inside one
 shared time budget, and condenses whatever they printed and returned into a compact record of
 flags and two integer indices.

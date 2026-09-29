@@ -1,11 +1,11 @@
 ---
 name: Bug report
-about: Report a problem with hazina-scan
+about: Report a problem with hazina-review
 title: ""
 labels: bug
 ---
 
-**hazina-scan version:** (`hazina-scan --version`)
+**hazina-review version:** (`hazina-review --version`)
 **OS:**
 **Python version:** (`python --version`)
 

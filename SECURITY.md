@@ -18,7 +18,7 @@ Secrets committed under ordinary names cannot be recognized by this name-based e
 
 A local checkout carries its own git configuration, and some settings there name a program
 for git to run with the operator's full access, outside the provider's sandbox. Every git
-command the review and the bundled scanner run while measuring a repository switches off the
+command the review runs while measuring a repository switches off the
 filesystem monitor (`core.fsmonitor`) and signature display on log (`log.showSignature`), and
 passes `--no-ext-diff` and `--no-textconv` to `log`, `show` and `diff`. Clean filters cannot
 be switched off by name, so no git command compares working-tree contents: history is read from
@@ -49,7 +49,7 @@ The zip contains exactly the four declared measurement files: deterministic meas
 review counts, and filtered task descriptions. Other files in reused output folders are excluded.
 Each repository's `codebase_repos.json` carries a `record_id` that lets us check the files were
 not changed after they were generated; editing them afterwards makes that check fail.
-Repository and owning-company identity fields follow the scanner's identity policy; the zip
+Repository and owning-company identity fields follow the measurement's identity policy; the zip
 is not a promise of complete anonymity. Model-derived prose is checked for paths, symbols,
 addresses and capitalized names. A lowercase proper name can still resemble an ordinary word.
 Read the sentences in `measurement.json` (`material`) and `codebase_repo_mining.json` before
@@ -78,8 +78,10 @@ throttled or dropped census session is retried, up to three attempts, each bille
 operator's account. When a session fails, the shareable block carries its failure kind and a
 short excerpt of what the provider command printed, masked like model prose and emptied if it
 still names anything.
-Subprocess output is currently captured without a size bound. Build operations offered by the
-bundled scan command have a different execution policy; use throwaway clones for those.
+Subprocess output is currently captured without a size bound. The build check, on by
+default, runs the repository's own install, build and test commands in its checkout with the
+operator's full access and may change that checkout; run it on a throwaway clone, or pass
+`--no-build`.
 
 ## The progress file and the support log
 

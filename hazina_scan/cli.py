@@ -17,7 +17,7 @@ the first broken one.
 
 WHAT IS PRINTED, AND WHERE. Results go to stdout -- the summary line, the review, what
 was written -- and progress goes to stderr: the plan, the lane clock, the failures. So
-`hazina-scan ... > report.txt` keeps the answer and leaves the narration on the terminal.
+`python -m hazina_scan ... > report.txt` keeps the answer and leaves the narration on the terminal.
 
 NOTHING IS SENT ANYWHERE. This tool opens no network connection; the files it writes are
 on the operator's own disk and the review printed at the end says exactly what is in
@@ -76,7 +76,7 @@ BUILD_WARNING = (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="hazina-scan",
+        prog="python -m hazina_scan",
         description="Measure a git repository and write three numbers-only files. "
         "Deterministic, local, and nothing is sent anywhere.",
     )
@@ -182,7 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
         f"much as for several -- with each folder renamed to its anonymous handle as it "
         f"is packed, so the friendly directory names on disk never appear inside it.",
     )
-    parser.add_argument("--version", action="version", version=f"hazina-scan {__version__}")
+    parser.add_argument("--version", action="version", version=f"hazina_scan {__version__}")
     return parser
 
 
@@ -649,7 +649,7 @@ LOCAL_ONLY_MARK = ".local."
 #: Said at the top of the local index every time it is written, so opening it away from
 #: this tool's own docs still explains what it is and why it never travels with the zip.
 INDEX_HEADER = (
-    "# hazina-scan index -- LOCAL ONLY. This file is not included in hazina-out.zip.",
+    "# hazina_scan index -- LOCAL ONLY. This file is not included in hazina-out.zip.",
     "# Folders here carry your repository's folder name. Inside the zip each is renamed "
     "to its anonymous handle.",
     "# Send hazina-out.zip, not this folder.",

@@ -83,6 +83,7 @@ __all__ = [
     "build_git_block",
     "build_codebase_repos_row",
     "build_lane",
+    "build_reserve",
     "row_status",
     "measure",
     "write_outputs",
@@ -142,7 +143,7 @@ _LANE_WORDS = {
 
 def measurer_version() -> str:
     """The tool and contract version stamped into every measurement."""
-    return os.environ.get(VERSION_ENV_VAR) or f"hazina-scan@{__version__}"
+    return os.environ.get(VERSION_ENV_VAR) or f"hazina_scan@{__version__}"
 
 
 # ---------------------------------------------------------------------------
@@ -791,6 +792,20 @@ def _git_lane(repo: Path, git_top: int) -> tuple[dict, dict]:
     return git_raw, git_block
 
 
+def _to_stderr(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
+def build_reserve(total_seconds: int, build_level: str, build_budget: int) -> int:
+    """The seconds held back from every other lane for the build check.
+
+    Carved out only when there is a build check to protect, and never more than half the
+    allowance: starving the readers to guarantee a build check would trade the measurements
+    that always work for the one that sometimes cannot.
+    """
+    return min(build_budget, int(total_seconds) // 2) if build_level != "none" else 0
+
+
 def build_lane(
     repo: Path,
     level: str,
@@ -799,6 +814,7 @@ def build_lane(
     max_projects: int,
     full_attempt_seconds: int,
     deadline: Deadline,
+    say=None,
 ) -> dict:
     """Attempt the build check at `level`, dropping to `discover` if a `full` run stalls.
 
@@ -828,7 +844,10 @@ def build_lane(
     fallback gets. Together they can never exceed the reserve, so the run-wide budget stays
     intact, and each attempt snapshots and restores the tree independently so a retry cannot
     weaken the guarantee that the checkout is left as it was found.
+
+    `say` receives each line this lane would print; left out, it prints to stderr.
     """
+    say = say or _to_stderr
     if level != "full":
         result = build_probe.collect(
             repo,
@@ -861,7 +880,7 @@ def build_lane(
             f"the cheaper level; the executed indices are null with a reason rather than "
             f"scored low"
         )
-        print(f"[build] {result['build_level_fallback_reason']}", file=sys.stderr, flush=True)
+        say(f"[build] {result['build_level_fallback_reason']}")
         return result
 
     fallback = build_probe.collect(
@@ -879,7 +898,7 @@ def build_lane(
         f"facts, the suite itself never ran, and the executed index is unscored with a "
         f"reason rather than scored low"
     )
-    print(f"[build] {fallback['build_level_fallback_reason']}", file=sys.stderr, flush=True)
+    say(f"[build] {fallback['build_level_fallback_reason']}")
     return fallback
 
 
@@ -897,6 +916,9 @@ def measure(
     timeout_build: int = DEFAULT_TIMEOUT_BUILD,
     max_build_projects: int = DEFAULT_MAX_BUILD_PROJECTS,
     full_attempt_seconds: int = DEFAULT_FULL_ATTEMPT_SECONDS,
+    before_build=None,
+    say=None,
+    measurer: str | None = None,
 ) -> tuple[dict, dict]:
     """Collect everything and return `(codebase_repos_row, measurement)`.
 
@@ -916,7 +938,15 @@ def measure(
     allowance does not reach reports null with a reason rather than raising.
 
     Neither the wall-clock table nor the timing sentence is printed from here. Both are on
-    `clock`, and what a run SAYS is the caller's decision -- this returns documents.
+    `clock`, and what a run SAYS is the caller's decision -- this returns documents. The few
+    lines the build check does say go to `say`, or to stderr when it is left out.
+
+    `before_build`, when given, is called once every reader has finished and before the
+    build check starts, so a caller's own work on the same repository can run while the
+    checkout is still exactly as it was found.
+
+    `measurer`, when given, is the `measurer_version` stamped into the measurement in place
+    of this package's own: a tool built on this one names itself there.
     """
     if build_level not in build_probe.BUILD_LEVELS:
         raise ValueError(
@@ -929,11 +959,9 @@ def measure(
     deadline = deadline if deadline is not None else Deadline(DEFAULT_BUDGET_SECONDS)
     do_build = build_level != "none"
 
-    # Time held back from the readers for the one lane that EXECUTES anything. It is carved
-    # out only when there is a build check to protect, and never at the cost of more than
-    # half the allowance: starving the readers to guarantee a build check would trade the
-    # measurements that always work for the one that sometimes cannot.
-    reserve = min(build_budget, deadline.total // 2) if do_build else 0
+    say = say or _to_stderr
+    # Time held back from the readers for the one lane that EXECUTES anything.
+    reserve = build_reserve(deadline.total, build_level, build_budget)
 
     # Resolved up front, ahead of the fan-out. Two consumers want this name -- the
     # measurement document and the identity lane -- it costs one `git config`, and the
@@ -980,6 +1008,9 @@ def measure(
         with clock.lane("classify"):
             classify_raw = classify.classify(tree_raw, threshold)
 
+        if before_build is not None:
+            before_build()
+
         # --- phase 3: the build check, alone, once every reader has finished ---
         build_ok = None
         testable_at_head = None
@@ -992,11 +1023,9 @@ def measure(
                 probe_budget = min(build_budget, int(deadline.remaining()))
                 if probe_budget < build_probe.MIN_PHASE_SECONDS:
                     build_raw = build_probe.skipped_budget(deadline.remaining())
-                    print(
+                    say(
                         f"[budget] the build check never started: {probe_budget}s of the "
-                        f"{deadline.total}s budget were left when its turn came",
-                        file=sys.stderr,
-                        flush=True,
+                        f"{deadline.total}s budget were left when its turn came"
                     )
                 else:
                     build_raw = build_lane(
@@ -1007,30 +1036,27 @@ def measure(
                         max_build_projects,
                         full_attempt_seconds,
                         deadline,
+                        say=say,
                     )
             build_ok = build_raw.get("build_ok")
             testable_at_head = build_raw.get("build_and_tests_ran")
             if build_raw.get("note"):
-                print(f"[budget] build check: {build_raw['note']}", file=sys.stderr, flush=True)
+                say(f"[budget] build check: {build_raw['note']}")
             # The level that actually happened, said out loud on every run. Somebody reading
             # an unscored executed index needs to be told this, not left to work it out.
             if build_raw.get("build_level"):
                 ran_at = build_raw["build_level"]
                 asked = build_raw.get("build_level_requested")
                 fell_back = "" if ran_at == asked else f" (asked for {asked})"
-                print(
+                say(
                     f"[build] ran at level {ran_at}{fell_back}; "
                     f"observed_runnability={build_raw.get('observed_runnability')}, "
-                    f"discover_runnability={build_raw.get('discover_runnability')}",
-                    file=sys.stderr,
-                    flush=True,
+                    f"discover_runnability={build_raw.get('discover_runnability')}"
                 )
             if build_raw.get("observed_runnability_reason"):
-                print(
+                say(
                     f"[build] the executed index is unscored: "
-                    f"{build_raw['observed_runnability_reason']}",
-                    file=sys.stderr,
-                    flush=True,
+                    f"{build_raw['observed_runnability_reason']}"
                 )
     finally:
         clock.stop_heartbeat()
@@ -1051,7 +1077,7 @@ def measure(
     }
 
     measurement = {
-        "measurer_version": measurer_version(),
+        "measurer_version": measurer or measurer_version(),
         "measured_at": measured_at,
         "repo_digest": digest,
         # Present so that a record can be tied to the repository it came from. The digest

@@ -1,4 +1,4 @@
-"""Turn one discovered project into the phase-by-phase command plan hazina-scan runs it with.
+"""Turn one discovered project into the phase-by-phase command plan the build check runs it with.
 
 Each sibling module answers one ecosystem's version of the same five questions -- how to
 resolve and install dependencies, how to build, how to list the tests, how to run them, and

@@ -45,10 +45,8 @@ def test_every_provider_names_the_model_a_run_uses_when_none_is_asked_for():
     from hazina_review import emit
 
     assert set(registry.DEFAULT_MODELS) == set(registry.PROVIDERS)
+    assert registry.DEFAULT_MODELS[SECOND] == "gpt-6-sol"
     for provider, model in registry.DEFAULT_MODELS.items():
-        if model is None:
-            assert provider == SECOND
-            continue
         # A pinned id and not an alias: an alias is a different model from one month to the
         # next, and two runs under different models are not the same measurement.
         assert emit.MODEL_ID.apply(model, "model") == model, provider

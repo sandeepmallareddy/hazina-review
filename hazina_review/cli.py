@@ -14,6 +14,8 @@ from hazina_review.providers.registry import (
     ProviderNotIsolated,
     ProviderUnavailable,
 )
+from hazina_scan import orchestrator
+from hazina_scan.build.probe import BUILD_LEVELS
 from hazina_scan.schema import EmissionRefused
 
 
@@ -69,6 +71,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="the mining lane's own ceiling; the run budget still bounds it",
     )
     parser.add_argument(
+        "--build",
+        dest="build_level",
+        choices=BUILD_LEVELS,
+        default=None,
+        help=f"How much of the build check to run (default {DEFAULT_BUILD_LEVEL}). It RUNS "
+        "EACH REPOSITORY'S OWN install, build and test commands and changes the checkout, so "
+        "run it on a throwaway copy: discover resolves dependencies, builds and lists the "
+        "tests; full also runs them and reads coverage back; none runs nothing.",
+    )
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="Same as --build none: review without running anything of the repository's own.",
+    )
+    parser.add_argument(
+        "--build-budget-seconds",
+        type=int,
+        default=None,
+        metavar="SECONDS",
+        help=f"The build check's reserved share of --budget-seconds (default "
+        f"{orchestrator.DEFAULT_BUILD_BUDGET_SECONDS}, never more than half of it).",
+    )
+    parser.add_argument(
+        "--full-attempt-seconds",
+        type=int,
+        default=None,
+        metavar="SECONDS",
+        help=f"How long a --build full attempt may run before the check is finished at the "
+        f"cheaper level (default {orchestrator.DEFAULT_FULL_ATTEMPT_SECONDS}).",
+    )
+    parser.add_argument(
+        "--timeout-build",
+        type=int,
+        default=None,
+        metavar="SECONDS",
+        help=f"Ceiling for ONE command inside the build check (default "
+        f"{orchestrator.DEFAULT_TIMEOUT_BUILD}), always subordinate to the budgets.",
+    )
+    parser.add_argument(
+        "--max-build-projects",
+        type=int,
+        default=None,
+        metavar="N",
+        help=f"How many project roots inside one repository the build check may reach "
+        f"(default {orchestrator.DEFAULT_MAX_BUILD_PROJECTS}).",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="only check that everything a run needs is in place, then exit",
@@ -96,6 +145,9 @@ def _say(done: dict) -> None:
         print(f"Zip to send: {done['zip']}")
 
 
+#: The build check's level when none is named: the bundled scanner's own default.
+DEFAULT_BUILD_LEVEL = "full"
+
 #: What a new run uses for each recorded option left out.
 DEFAULTS = {
     "provider": PROVIDERS[0],
@@ -103,9 +155,14 @@ DEFAULTS = {
     "mine_n": DEFAULT_N,
     "census_timeout": run.DEFAULT_LANE_TIMEOUT,
     "mine_timeout": run.DEFAULT_LANE_TIMEOUT,
+    **run.BUILD_DEFAULTS,
+    "build_level": DEFAULT_BUILD_LEVEL,
 }
 #: The flag for each recorded option, as the operator typed it.
-FLAGS = {name: "--" + name.replace("_", "-") for name in support.RECORDED}
+FLAGS = {
+    **{name: "--" + name.replace("_", "-") for name in support.RECORDED},
+    "build_level": "--build/--no-build",
+}
 
 
 def _refuse(message: str) -> int:
@@ -147,6 +204,10 @@ def _already_done(out_dir: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    # `--no-build` is the plainer spelling of `--build none` and always wins over it, as in
+    # the bundled scanner's own command line.
+    if args.no_build:
+        args.build_level = "none"
     progress = None
     if args.resume is not None:
         progress, refused = _resumed(args)
@@ -177,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
             budget_seconds=args.budget_seconds,
             census_timeout=args.census_timeout,
             mine_timeout=args.mine_timeout,
+            **_build(args),
         )
     except run.Refused as refused:
         return _refuse(str(refused))
@@ -186,6 +248,11 @@ def main(argv: list[str] | None = None) -> int:
         # Outside a repository's review, which keeps its own place: during the checks, or
         # while the zip was being written.
         return _refuse("stopped with Ctrl-C.")
+
+
+def _build(args) -> dict:
+    """The build check's level and sizes, as the run takes them."""
+    return {name: getattr(args, name) for name in run.BUILD_DEFAULTS}
 
 
 def _run(args, repos: list[Path], out: Path, progress) -> int:
@@ -203,6 +270,7 @@ def _run(args, repos: list[Path], out: Path, progress) -> int:
         repos,
         out,
         model_check=not args.skip_model_check,
+        build_level=args.build_level,
     )
     preflight.say(checked, stream)
     if args.check:
@@ -224,6 +292,7 @@ def _run(args, repos: list[Path], out: Path, progress) -> int:
             mine_timeout=args.mine_timeout,
             checklist=checked,
             resume=progress,
+            **_build(args),
         )
     except (ProviderUnavailable, ProviderNotIsolated, run.Refused, support.UnsafeRunFile) as stop:
         return _refuse(str(stop))

@@ -1,6 +1,6 @@
-# Contributing to hazina-scan
+# Contributing to hazina-review
 
-Thanks for your interest in improving hazina-scan. This document covers setup,
+Thanks for your interest in improving hazina-review. This document covers setup,
 running the tests, style, and commit conventions. It also has a "For maintainers"
 section at the end.
 
@@ -64,7 +64,7 @@ A sign-off (DCO-style `Signed-off-by:` trailer) is **not** required.
 
 ### Release steps
 
-1. Bump `__version__` in `hazina_scan/__init__.py`.
+1. Bump `__version__` in `hazina_review/__init__.py`.
 2. Add a new section to `CHANGELOG.md` describing what changed, under
    `## [X.Y.Z] - YYYY-MM-DD`, following [Keep a Changelog](https://keepachangelog.com/).
 3. Commit, tag the release `vX.Y.Z`, and push the tag.

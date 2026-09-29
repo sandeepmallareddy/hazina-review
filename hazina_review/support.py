@@ -28,6 +28,7 @@ from pathlib import Path
 
 from hazina_review import __version__
 from hazina_review.providers import registry
+from hazina_scan import orchestrator
 
 PROGRESS_NAME = "hazina-review-progress.json"
 LOG_NAME = "hazina-review-log.txt"
@@ -48,8 +49,30 @@ GONE = "gone"
 #: rest of the batch into rows that say nothing, some of them billed.
 STOP_KINDS = ("rate_limited", "auth", "model_unavailable", "cli_missing", NOT_ISOLATED)
 
+#: How the build check is sized, as the scanner sizes it, and the level a run that recorded
+#: none of them ran at: a run started before the build check was part of a review.
+BUILD_OPTIONS = {
+    "build_level": "none",
+    "build_budget_seconds": orchestrator.DEFAULT_BUILD_BUDGET_SECONDS,
+    "full_attempt_seconds": orchestrator.DEFAULT_FULL_ATTEMPT_SECONDS,
+    "timeout_build": orchestrator.DEFAULT_TIMEOUT_BUILD,
+    "max_build_projects": orchestrator.DEFAULT_MAX_BUILD_PROJECTS,
+}
+
 #: The options a run is started with, recorded so a resumed run uses the same ones.
-RECORDED = ("provider", "model", "budget_seconds", "mine_n", "census_timeout", "mine_timeout")
+RECORDED = (
+    "provider",
+    "model",
+    "budget_seconds",
+    "mine_n",
+    "census_timeout",
+    "mine_timeout",
+    *BUILD_OPTIONS,
+)
+
+#: The kinds a build check that did not complete leaves on its repository.
+BUILD_TIMED_OUT = "build_timed_out"
+BUILD_UNAVAILABLE = "build_unavailable"
 
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _NONBLOCK = getattr(os, "O_NONBLOCK", 0)
@@ -181,8 +204,34 @@ def reason(kind: str | None, provider: str, model: str | None) -> str:
         GONE: "its folder is no longer there",
         "nothing_to_read": "there was nothing committed to read",
         "copy_incomplete": "the temporary copy of the repository came out incomplete",
+        BUILD_TIMED_OUT: "the build check ran out of time",
+        BUILD_UNAVAILABLE: "the build check could not be completed",
     }
     return said.get(kind or "unknown", said["unknown"])
+
+
+def build_outcome(block: dict | None) -> tuple[str, str]:
+    """How a build check ended, as `(how, words)`: `how` is `DONE`, `NOT_STARTED` or
+    `INCOMPLETE`, and `words` says what came of it. Only the block's yes-or-no facts are read,
+    never what a command printed."""
+    block = block or {}
+    if block.get("build_skipped"):
+        return NOT_STARTED, "the run's time was used up"
+    if block.get("timed_out"):
+        return INCOMPLETE, "it ran out of time"
+    if not block.get("ok"):
+        return INCOMPLETE, "it ran into a problem"
+    built = block.get("build_ok")
+    if built is False:
+        return DONE, "the repository did not build"
+    if built is None:
+        return INCOMPLETE, "this machine could not build it"
+    ran = block.get("build_and_tests_ran")
+    if ran:
+        return DONE, "built, tests ran"
+    if ran is None and block.get("tests_discovered"):
+        return DONE, "built, tests listed"
+    return DONE, "built, no tests ran"
 
 
 #: How many incomplete repositories the summary names before it points to the log instead.
@@ -380,7 +429,9 @@ class Progress:
             )
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
-            options = {key: document["options"][key] for key in RECORDED}
+            # A run recorded before the build check was part of a review ran without one.
+            recorded = {**BUILD_OPTIONS, **document["options"]}
+            options = {key: recorded[key] for key in RECORDED}
             repos = [
                 Repo(
                     path=str(item["path"]),
@@ -499,6 +550,15 @@ class Log:
             f"ceiling {options['mine_n']}, census limit {options['census_timeout']}s, mining "
             f"limit {options['mine_timeout']}s"
         )
+        level = options.get("build_level", "none")
+        if level == "none":
+            self.write("build check: none")
+        else:
+            self.write(
+                f"build check: {level}, its share {options['build_budget_seconds']}s, a full "
+                f"attempt {options['full_attempt_seconds']}s, one command "
+                f"{options['timeout_build']}s, up to {options['max_build_projects']} projects"
+            )
         self.write(f"output: {out_dir}")
         states = ", ".join(f"{repo.folder} ({repo.state})" for repo in repos)
         self.write(f"repositories: {len(repos)}: {states}")

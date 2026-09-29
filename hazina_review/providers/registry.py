@@ -116,9 +116,9 @@ _KNOWN = (
             "-c",
             'approval_policy="never"',
         ),
-        # The operator is asked to choose a model for this provider. Keeping that
-        # choice explicit avoids changing a measurement when the CLI's default changes.
-        default_model=None,
+        # Pinned, as for the first provider: left to itself the command picks whatever its
+        # own default is at the time, and that changes when the command is updated.
+        default_model="gpt-6-sol",
         probe=("exec", "--help"),
         sandbox_check=("sandbox", "--"),
         status=("login", "status"),

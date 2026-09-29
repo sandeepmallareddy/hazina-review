@@ -13,6 +13,7 @@ from hazina_review.lanes import census
 from hazina_review.providers import ask as ask_mod
 from hazina_review.providers import registry
 from tests.conftest import make_repo
+from tests.test_review_run import _builds_nothing_unless_asked  # noqa: F401 -- fixture
 
 # The export guard refuses a provider's name in any file the export carries, so the names are
 # read from the registry rather than spelled here.
@@ -360,6 +361,8 @@ def test_a_session_that_runs_out_of_time_fails_as_a_timeout(monkeypatch):
 
 
 def test_a_provider_with_no_pinned_model_needs_one_named(monkeypatch):
+    # Every provider has a pinned model today; the guard stays for one added without it.
+    monkeypatch.setitem(registry.DEFAULT_MODELS, SECOND, None)
     _fake_provider(monkeypatch, lambda token, argv: pytest.fail("a session was started"))
     result = preflight.check_model(SECOND, None)
     assert result.state == preflight.FAILED and "--model" in result.fix

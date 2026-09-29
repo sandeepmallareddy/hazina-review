@@ -34,8 +34,8 @@ jobs:
         run: pip-audit --strict --desc=on .
 
   test-other-pythons:
-    # The published repository tests every supported Python; forks and mirrors test one.
-    if: ${{ endsWith(github.repository, '/hazina-scan') || endsWith(github.repository, '/hazina-review') }}
+    # The client repository tests every supported Python; forks and mirrors test one.
+    if: ${{ endsWith(github.repository, '/hazina-review') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -54,7 +54,8 @@ jobs:
         run: pytest -q
 
   review-release-matrix:
-    if: ${{ endsWith(github.repository, '/hazina-scan-internal') }}
+    # The private source repository, whose name ends in `-internal`.
+    if: ${{ endsWith(github.repository, '-internal') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -46,6 +46,13 @@ GIT = "git"
 REPO = "Repository"
 OUTPUT = "Output directory"
 MODEL = "Model"
+BUILD = "Build check"
+
+#: Said before every run that builds: the check changes the checkout it runs in.
+BUILD_WARNING = (
+    "The build check runs each repository's own install, build and test commands and changes "
+    "the checkout. Run it on a throwaway copy."
+)
 
 #: Ubuntu 23.10 and later set this to 1, which stops an unconfined program such as the
 #: second command's bundled bubblewrap from using the user namespaces its sandbox needs.
@@ -262,6 +269,21 @@ def check_repo(raw: Path) -> Result:
     return Result(name, OK, f"{path} is a git repository with commits.")
 
 
+def check_uncommitted(raw: Path) -> Result | None:
+    """A warning when a repository the build check will run in has changes not yet committed,
+    or None. Only files git already tracks are asked about."""
+    path = Path(raw).expanduser().resolve()
+    changed = env.run_git(path, "status", "--porcelain", "--untracked-files=no").strip()
+    if not changed:
+        return None
+    return Result(
+        f"{REPO} {path.name}",
+        WARNING,
+        f"{path} has uncommitted changes, and the build check may overwrite them.",
+        "Commit or stash them first, or run on a throwaway copy, or pass --no-build.",
+    )
+
+
 def _nearest_existing(path: Path) -> Path:
     while not path.exists() and path != path.parent:
         path = path.parent
@@ -408,8 +430,14 @@ def run_checks(
     out: Path,
     *,
     model_check: bool = True,
+    build_level: str = "none",
 ) -> list[Result]:
-    """Every check, in order. The paid one is started only when everything before it passed."""
+    """Every check, in order. The paid one is started only when everything before it passed.
+
+    A run that builds is warned, once, that the build check changes the checkout, and once
+    for each repository whose uncommitted changes it may overwrite. Neither stops the run.
+    """
+    building = build_level != "none"
     results = provider_checks(provider)
     git = check_git()
     results.append(git)
@@ -422,7 +450,12 @@ def run_checks(
         results.append(found)
         if found.state != FAILED:
             good.append(Path(repo))
+            dirty = check_uncommitted(repo) if building else None
+            if dirty is not None:
+                results.append(dirty)
     results.append(check_output(out, good))
+    if building:
+        results.append(Result(BUILD, WARNING, BUILD_WARNING, "Pass --no-build to leave it out."))
     if not model_check:
         results.append(
             _skipped(

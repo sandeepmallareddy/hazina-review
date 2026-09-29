@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The build check is part of the review, on by default. After both model sessions, each
+  repository's own install, build and test commands are run in its checkout by the same code
+  and with the same flags and defaults as the build check always had (`--build none|discover|full`,
+  default `full`; `--no-build`; `--build-budget-seconds`, `--full-attempt-seconds`,
+  `--timeout-build`, `--max-build-projects`). It fills the `build` block of
+  `measurement.json` and `build_ok` and `testable_at_head` in `codebase_repos.json` and `.csv`,
+  so one run and one zip now carry the build results as well as the review. Its share of the budget is
+  held back from the model sessions. It adds time and is not billed by the AI provider. The
+  checks before a run warn that it changes the checkout, and name each repository with
+  uncommitted changes it may overwrite. A progress line says how it ended
+  (`build check done in 3m 10s (built, tests ran)`), the heartbeat names it while it runs,
+  `--resume` keeps its level and limits, and the support log records them and each
+  repository's outcome and duration. Invalid build limits are refused before any check.
+
 - Each repository's `codebase_repos.json` now starts with a `record_id`, which lets us check
   that the four files were not changed after they were generated. The CSV row and
   `measurement.json` are unchanged.
@@ -60,8 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DETAIL.local.md` is removed only from a folder that also holds an earlier run's
   `measurement.json` and `codebase_repos.json`, and `INDEX.local.txt` only when it starts with
   the header the earlier version wrote and every folder it lists that is still there is such a folder, so
-  hazina-scan's own index is kept. Any other file by those names is left, with one line
-  saying so.
+  an index this tool did not write is kept. Any other file by those names is left, with one
+  line saying so.
 - The support log and the progress file are written only to a plain file of the run's own.
   Before the checks (so before the billed model check), a named pipe, a device, a folder, a
   symbolic link or a hard link at either name stops the run with exit code 2 and nothing
@@ -80,6 +94,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Every provider now has a pinned default model (the new one is `gpt-6-sol`), so `--model`
+  is always optional.
+
+- `measurer_version` in `measurement.json` and in `codebase_repo_mining.json` is now
+  `hazina-review@<version>` (for example `hazina-review@0.1.0`), naming this tool and its
+  version. Before, `measurement.json` named the bundled scanner and its version, and
+  `codebase_repo_mining.json` held the bare version number.
 - The end of a run is short however many repositories it had: one line for where the
   results are, one for the zip to send, and a summary that counts repositories done,
   incomplete and not started, naming only the incomplete ones (at most ten; the rest are in
@@ -89,12 +110,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   incomplete (before, a run whose sessions failed exited `0`); `2` the run stopped early or
   could not start.
 - A repository stopped by a problem that meets every repository is no longer packed into the
-  zip; a resumed run redoes it. Step 1's `[lane]` and `[alive]` lines are no longer printed;
+  zip; a resumed run redoes it. The per-lane `[lane]` and `[alive]` lines are no longer printed;
   the progress lines above replace them.
 
 - The output directory is now `hazina-review-out` by default, and the zip is
-  `hazina-review-out.zip`, so a review run beside hazina-scan never shares its folder or
-  overwrites its zip.
+  `hazina-review-out.zip`, so the folder and the zip no longer share a name with another
+  tool's.
 
 - New output layout. Each repository's folder is named after its directory (a repeated name
   gets `-2`, `-3`, ...) and holds exactly `measurement.json`, `codebase_repos.json`,
@@ -102,7 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the output directory, holds `<folder name>/<the four files>` for every repository of the
   run; the anonymous `repo-<hex>` folder names are gone from the zip and from the closing
   lines.
-- Three values in `measurement.json`, shared with `hazina-scan`, are written differently:
+- Three values in `measurement.json` are written differently:
   `tree.linters_and_formatters.<tool>` masks the config file
   name (`"pyproject.toml"` becomes `"[file]"`), `ext_signals.history.ref_choice_reason` is
   `"the model was unavailable; used the deepest reachable history"`, and
@@ -214,7 +235,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every rule a sentence is checked against.
 - With no `--model`, the default provider uses one pinned id. The second provider requires
   an explicit id, and the block records whichever id was used.
-- `measurement.json` is hazina-scan's, with one `material` block added. Every value in the
+- `measurement.json` holds the repository's measurement, with one `material` block added. Every value in the
   block is checked against a fixed list of allowed fields, and a sentence that names a path,
   a file, a symbol or a capitalised name goes out empty.
 - `DETAIL.local.md`: what is being sent, then everything the model found, for you to compare.

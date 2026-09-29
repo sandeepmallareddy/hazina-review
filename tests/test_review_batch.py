@@ -26,6 +26,7 @@ from tests.test_review_run import (  # noqa: F401 -- fixtures
     FOUR,
     GOOD,
     _assessment,
+    _builds_nothing_unless_asked,
     _provider_checks_pass,
     _turn,
     ready,

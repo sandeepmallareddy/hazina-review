@@ -37,10 +37,15 @@ from hazina_review.providers.registry import (
 from hazina_scan import cli as scan
 from hazina_scan import env, fileguard, orchestrator
 
-#: This tool's own output directory and archive. hazina-scan writes `hazina-out` and
-#: `hazina-out.zip`; sharing either would let one tool's run remove or overwrite the other's.
+#: This tool's own output directory and archive. The bundled scanner's command line writes
+#: `hazina-out` and `hazina-out.zip`; sharing either would let one run remove or overwrite
+#: the other's.
 DEFAULT_OUT = "hazina-review-out"
 ZIP_NAME = "hazina-review-out.zip"
+
+#: The `measurer_version` in every file a review writes: this tool and its version, never the
+#: bundled scanner's.
+MEASURER_VERSION = f"hazina-review@{__version__}"
 
 
 class Refused(ValueError):
@@ -92,9 +97,12 @@ OLD_LOCAL_FILES = (
     ("DETAIL.local.md", "raw findings from an earlier run"),
 )
 
-#: The first line of the local index an earlier version wrote. It wrote the index with step 1's
-#: own writer, so this is also the line hazina-scan writes: the line alone does not say which
-#: tool wrote the file, and the folders the index names are what settle it.
+#: The first line of the local index an earlier version (0.1.0) wrote, byte for byte, so it
+#: names the tool that version's writer belonged to. Earlier versions of the bundled scanner
+#: wrote the same line: the line alone does not say which tool wrote the file, and the folders
+#: the index names are what settle it. This one line is the export guard's only exception to
+#: the former tool name; a file already on a client's disk
+#: cannot be recognised by any other text.
 OLD_INDEX_FIRST_LINE = (
     "# hazina-scan index -- LOCAL ONLY. This file is not included in hazina-out.zip."
 )
@@ -125,7 +133,7 @@ def _earlier_review_index(out_dir: Path, index: Path) -> bool:
 
     Its first line is the one that version wrote, and every folder it names that is still
     there is an earlier review's folder with its raw findings in it, and at least one is.
-    hazina-scan writes the same first line, and its folders never hold raw findings.
+    The bundled scanner wrote the same first line, and its folders never hold raw findings.
     """
     try:
         with fileguard.open_binary(index, None) as handle:
@@ -238,8 +246,8 @@ DEFAULT_LANE_TIMEOUT = 14400
 #: How often, in seconds, a repository whose model sessions are still running says so.
 HEARTBEAT_SECONDS = 60
 
-#: Each model lane as the person reading the progress lines knows it.
-LANE_WORDS = {"census": "census", "mining": "task mining"}
+#: Each model lane, and the build check, as the person reading the progress lines knows it.
+LANE_WORDS = {"census": "census", "mining": "task mining", "build": "build check"}
 
 
 class _QuietClock(orchestrator.LaneClock):
@@ -251,24 +259,35 @@ class _QuietClock(orchestrator.LaneClock):
 
 
 class _Watch:
-    """One repository's two model lanes, as they are reported: a line when each ends, and
-    while any is still running, one every `interval` seconds naming those still at work."""
+    """One repository's two model lanes and its build check, as they are reported: a line when
+    each ends, and while any is still running, one every `interval` seconds naming those still
+    at work. Entered once around the whole repository, and again by the model lanes; only the
+    outermost entry starts and stops the heartbeat."""
 
     def __init__(self, label: str, interval: float, *, provider: str, model, mine_n: int):
         self.label, self.interval = label, interval
         self.provider, self.model, self.mine_n = provider, model, mine_n
         self.outcomes: dict[str, dict] = {}
+        self.build: dict | None = None
         self._started: dict[str, float] = {}
+        self._ended: set[str] = set()
         self._lock = threading.Lock()
         self._quiet = threading.Event()
         self._beat: threading.Thread | None = None
+        self._depth = 0
 
     def __enter__(self):
-        self._beat = threading.Thread(target=self._beating, daemon=True)
-        self._beat.start()
+        self._depth += 1
+        if self._depth == 1:
+            self._quiet.clear()
+            self._beat = threading.Thread(target=self._beating, daemon=True)
+            self._beat.start()
         return self
 
     def __exit__(self, *exc) -> None:
+        self._depth -= 1
+        if self._depth:
+            return
         self._quiet.set()
         if self._beat is not None:
             self._beat.join(timeout=2)
@@ -280,7 +299,7 @@ class _Watch:
                 running = [
                     f"{LANE_WORDS[name]} {support.short(now - began)}"
                     for name, began in self._started.items()
-                    if name not in self.outcomes
+                    if name not in self._ended
                 ]
             if running:
                 _tell(self.label, f"still working ({', '.join(running)})")
@@ -293,6 +312,7 @@ class _Watch:
         with self._lock:
             took = time.monotonic() - self._started.get(name, time.monotonic())
             self.outcomes[name] = {**outcome, "seconds": took}
+            self._ended.add(name)
         word, spent = LANE_WORDS[name], support.duration(took)
         kind = outcome.get("kind")
         if kind is not None:
@@ -307,11 +327,47 @@ class _Watch:
                 said += ", the most it was asked for, so the counts are a lower bound"
             _tell(self.label, f"task mining done in {spent} ({said})")
 
+    def build_ended(self, block: dict | None) -> None:
+        """Say how the build check ended, and keep it for the log and the batch."""
+        with self._lock:
+            began = self._started.get("build")
+            took = 0.0 if began is None else time.monotonic() - began
+            self._ended.add("build")
+            how, words = support.build_outcome(block)
+            self.build = {"how": how, "words": words, "seconds": took}
+            if how == support.INCOMPLETE:
+                timed_out = bool((block or {}).get("timed_out"))
+                self.build["kind"] = (
+                    support.BUILD_TIMED_OUT if timed_out else support.BUILD_UNAVAILABLE
+                )
+            elif how == support.NOT_STARTED:
+                self.build["kind"] = support.BUILD_TIMED_OUT
+        spent = support.duration(took)
+        if how == support.NOT_STARTED:
+            _tell(self.label, f"build check did not start: {words}")
+        elif how == support.INCOMPLETE:
+            _tell(self.label, f"build check did not complete after {spent}: {words}")
+        elif words.startswith("built"):
+            _tell(self.label, f"build check done in {spent} ({words})")
+        else:
+            _tell(self.label, f"build check done in {spent}: {words}")
 
-def _ceiling(deadline, cap: int) -> int:
-    """A lane's seconds: its own ceiling or what the run has left, whichever is less, and never
-    under one second. A lane is always started; one given too little comes back timed out."""
-    return max(1, deadline.slice(cap))
+
+def _ceiling(deadline, cap: int, reserve: float = 0.0) -> int:
+    """A lane's seconds: its own ceiling or what the run has left less the build check's
+    reserve, whichever is less, and never under one second. A lane is always started; one given
+    too little comes back timed out."""
+    return max(1, deadline.slice(cap, reserve))
+
+
+def lane_ceilings(
+    deadline, *, build_level: str, build_budget: int, census_timeout: int, mine_timeout: int
+) -> tuple[int, int]:
+    """Each model lane's seconds, settled once when a repository starts: its own ceiling, or
+    what the run has left less the time held back for the build check, whichever is less. The
+    reserve is the scanner's own, so the build check gets the share it always had."""
+    reserve = orchestrator.build_reserve(deadline.total, build_level, build_budget)
+    return _ceiling(deadline, census_timeout, reserve), _ceiling(deadline, mine_timeout, reserve)
 
 
 def _model_lanes(
@@ -325,6 +381,8 @@ def _model_lanes(
     census_timeout: int = DEFAULT_LANE_TIMEOUT,
     mine_timeout: int = DEFAULT_LANE_TIMEOUT,
     watch: _Watch | None = None,
+    seconds: tuple[int, int] | None = None,
+    reserve: float = 0.0,
 ):
     """Both model lanes against one scratch copy, removed only after both finish.
 
@@ -332,14 +390,18 @@ def _model_lanes(
     the operator's: it is the files committed at `HEAD` with the credential-shaped ones left
     out, beside the history prepared the same way.
 
-    Each lane's seconds are settled once, before anything else here starts, as its own ceiling
-    or what the run has left. Preparing the copy and the history does not come out of them.
+    Each lane's seconds are `seconds` when given (`lane_ceilings`, settled when the repository
+    started), else settled here, before anything else starts, as its own ceiling or what the
+    run has left. Preparing the copy and the history does not come out of them. `reserve` is
+    the time held back for the build check, which the copy's git commands leave alone too.
     The history is written and the turns taken whatever the history turned out to hold; only
     a repository with nothing committed, or a copy that came out incomplete, has no turn.
     """
     model = model or DEFAULT_MODELS[provider]
-    census_seconds = _ceiling(deadline, census_timeout)
-    mine_seconds = _ceiling(deadline, mine_timeout)
+    census_seconds, mine_seconds = seconds or (
+        _ceiling(deadline, census_timeout, reserve),
+        _ceiling(deadline, mine_timeout, reserve),
+    )
 
     def no_turn(reason: str):
         return {
@@ -357,7 +419,7 @@ def _model_lanes(
         watch = watch or _Watch(
             "", HEARTBEAT_SECONDS, provider=provider, model=model, mine_n=mine_n
         )
-        git_seconds = max(1, deadline.slice(orchestrator.DEFAULT_TIMEOUT_GIT))
+        git_seconds = max(1, deadline.slice(orchestrator.DEFAULT_TIMEOUT_GIT, reserve))
         with clock.lane("snapshot"), env.git_ceiling(git_seconds):
             copied = snapshot.write_snapshot(repo, copy)
         if copied["truncated"]:
@@ -399,7 +461,8 @@ def _model_lanes(
 
 
 def review_status(row: dict, material: dict, mined: dict) -> tuple[str, str | None]:
-    """Only the census's clock running out is a timeout."""
+    """Only the census's clock running out is a timeout among the lanes; the build check's
+    own verdict, the scanner's, stands whenever both lanes completed."""
     if material.get("timed_out"):
         return "partial", "lanes_timed_out"
     if not material.get("scored") or mined.get("total_candidates") is None:
@@ -420,6 +483,7 @@ def _review_one(
     census_timeout: int = DEFAULT_LANE_TIMEOUT,
     mine_timeout: int = DEFAULT_LANE_TIMEOUT,
     heartbeat_seconds: float | None = None,
+    build: dict | None = None,
 ) -> dict:
     """Review one repository and write its folder. Raises only what must stop the whole run.
 
@@ -428,9 +492,29 @@ def _review_one(
     turn that fails is not a failure in that sense at all. It yields a block of nulls naming
     what happened, and the run around it is complete. How each lane ended is returned under
     `lanes`, for the batch to decide whether to go on and for the support log.
+
+    The order is the scanner's readers, then both model lanes at once, then the build check
+    alone, all of it `orchestrator.measure`: the lanes run between its readers and its
+    build check. The build check executes the repository's own commands in the checkout; the
+    lanes never read the checkout, only a copy of what is committed, and they have finished
+    before it starts. `build` holds the check's level and sizes, as `BUILD_DEFAULTS` names
+    them; how it ended is returned under `build`.
     """
+    build = {**BUILD_DEFAULTS, **(build or {})}
     clock = _QuietClock(label="")
     deadline = orchestrator.Deadline(budget_seconds)
+    # Settled before anything runs, as the whole-run budget is shared out: the build check's
+    # reserve first, then each lane's ceiling from what is left.
+    seconds = lane_ceilings(
+        deadline,
+        build_level=build["build_level"],
+        build_budget=build["build_budget_seconds"],
+        census_timeout=census_timeout,
+        mine_timeout=mine_timeout,
+    )
+    reserve = orchestrator.build_reserve(
+        deadline.total, build["build_level"], build["build_budget_seconds"]
+    )
     watch = _Watch(
         label,
         HEARTBEAT_SECONDS if heartbeat_seconds is None else heartbeat_seconds,
@@ -439,20 +523,49 @@ def _review_one(
         mine_n=mine_n,
     )
     result = {"name": name, "repo": str(repo), "status": None, "error": None, "lanes": {}}
-    try:
-        # Step 1 first: it is free, and a repository it cannot measure is not worth a paid turn.
-        row, measurement = orchestrator.measure(repo, clock=clock, deadline=deadline)
-        lanes = _model_lanes(
-            repo,
-            clock,
-            deadline,
-            provider=provider,
-            model=model,
-            mine_n=mine_n,
-            census_timeout=census_timeout,
-            mine_timeout=mine_timeout,
-            watch=watch,
+    building = build["build_level"] != "none"
+    lanes: dict = {}
+
+    def between_readers_and_build() -> None:
+        # Step 1's readers have finished: they are free, and a repository they cannot measure
+        # is not worth a paid turn. The checkout is still exactly as it was found.
+        lanes.update(
+            _model_lanes(
+                repo,
+                clock,
+                deadline,
+                provider=provider,
+                model=model,
+                mine_n=mine_n,
+                census_timeout=census_timeout,
+                mine_timeout=mine_timeout,
+                watch=watch,
+                seconds=seconds,
+                reserve=reserve,
+            )
         )
+        if building:
+            watch.begin("build")
+
+    try:
+        with watch:
+            row, measurement = orchestrator.measure(
+                repo,
+                clock=clock,
+                deadline=deadline,
+                build_level=build["build_level"],
+                build_budget=build["build_budget_seconds"],
+                timeout_build=build["timeout_build"],
+                max_build_projects=build["max_build_projects"],
+                full_attempt_seconds=build["full_attempt_seconds"],
+                before_build=between_readers_and_build,
+                measurer=MEASURER_VERSION,
+                # What the build check says in the scanner's words is left out: the line
+                # below says how it ended, in this tool's.
+                say=lambda _line: None,
+            )
+            if building:
+                watch.build_ended(measurement["ext_signals"]["build"])
         block, _answer = lanes["census"]
         mined, _mining_answer = lanes["mining"]
         skipped = lanes.get("no_turn")
@@ -460,7 +573,7 @@ def _review_one(
             {
                 **mined,
                 "repo_id": row["fake_repo_name"],
-                "measurer_version": __version__,
+                "measurer_version": MEASURER_VERSION,
                 "mined_at": datetime.now(UTC).isoformat(),
             }
         )
@@ -490,7 +603,12 @@ def _review_one(
         raise
     except Exception as exc:  # noqa: BLE001 -- one repository, not the run
         _tell(label, f"FAILED: {type(exc).__name__}: {exc}")
-        return {**result, "error": f"{type(exc).__name__}: {exc}", "lanes": watch.outcomes}
+        return {
+            **result,
+            "error": f"{type(exc).__name__}: {exc}",
+            "lanes": watch.outcomes,
+            "build": watch.build,
+        }
     if skipped:
         _tell(
             label,
@@ -507,10 +625,35 @@ def _review_one(
         "written": written,
         "no_turn": skipped,
         "lanes": watch.outcomes,
+        "build": watch.build,
     }
 
 
-def check_limits(*, mine_n: int, budget_seconds: int, census_timeout: int, mine_timeout: int):
+#: The build check as a run with none named runs it: not at all. The command line names
+#: the scanner's default level, `full`, and these sizes are the scanner's own.
+BUILD_DEFAULTS = support.BUILD_OPTIONS
+
+#: Each build size as the operator types it.
+_BUILD_FLAGS = {
+    "build_budget_seconds": "--build-budget-seconds",
+    "full_attempt_seconds": "--full-attempt-seconds",
+    "timeout_build": "--timeout-build",
+    "max_build_projects": "--max-build-projects",
+}
+
+
+def check_limits(
+    *,
+    mine_n: int,
+    budget_seconds: int,
+    census_timeout: int,
+    mine_timeout: int,
+    build_level: str = "none",
+    build_budget_seconds: int = orchestrator.DEFAULT_BUILD_BUDGET_SECONDS,
+    full_attempt_seconds: int = orchestrator.DEFAULT_FULL_ATTEMPT_SECONDS,
+    timeout_build: int = orchestrator.DEFAULT_TIMEOUT_BUILD,
+    max_build_projects: int = orchestrator.DEFAULT_MAX_BUILD_PROJECTS,
+):
     """Raise `Refused` when a limit the operator gave cannot bound a run.
 
     The command line asks this before its checks, the last of which is billed, and
@@ -520,6 +663,18 @@ def check_limits(*, mine_n: int, budget_seconds: int, census_timeout: int, mine_
         raise Refused("the task ceiling and time budget must be positive")
     if census_timeout <= 0 or mine_timeout <= 0:
         raise Refused("each lane's timeout must be positive")
+    if build_level not in orchestrator.build_probe.BUILD_LEVELS:
+        levels = ", ".join(orchestrator.build_probe.BUILD_LEVELS)
+        raise Refused(f"--build must be one of {levels}, not {build_level!r}")
+    sizes = {
+        "build_budget_seconds": build_budget_seconds,
+        "full_attempt_seconds": full_attempt_seconds,
+        "timeout_build": timeout_build,
+        "max_build_projects": max_build_projects,
+    }
+    for name, value in sizes.items():
+        if type(value) is not int or value <= 0:
+            raise Refused(f"{_BUILD_FLAGS[name]} must be a positive whole number")
 
 
 def _settle(record: support.Repo, result: dict) -> str | None:
@@ -540,7 +695,9 @@ def _settle(record: support.Repo, result: dict) -> str | None:
     if result["status"] == "measured":
         record.state, record.kind, record.packed = support.DONE, None, True
         return None
-    named = stop or result.get("no_turn") or next((k for k in kinds if k), None) or "unknown"
+    built = (result.get("build") or {}).get("kind")
+    named = stop or result.get("no_turn") or next((k for k in kinds if k), None) or built
+    named = named or "unknown"
     record.state, record.kind, record.packed = support.INCOMPLETE, named, stop is None
     return stop
 
@@ -563,6 +720,12 @@ def _log_repository(log: support.Log, record: support.Repo, result: dict | None)
             if excerpt:
                 line += f"; masked excerpt: {excerpt}"
         log.write(line)
+    built = (result or {}).get("build")
+    if built:
+        log.write(
+            f"{record.folder}: build check ended after {support.duration(built['seconds'])}: "
+            f"{built['words']}"
+        )
     if result and result.get("no_turn"):
         log.write(f"{record.folder}: no session was started: {result['no_turn']}")
     if result and result.get("error"):
@@ -584,6 +747,7 @@ def review_all(
     heartbeat_seconds: float | None = None,
     checklist: list | None = None,
     resume: support.Progress | None = None,
+    **build,
 ) -> dict:
     """Review every repository in turn, then write the zip.
 
@@ -595,17 +759,25 @@ def review_all(
     file in `out_dir` records where the batch stands, so that `resume` (that file, loaded)
     carries on with only what is left.
 
+    `build` names the build check's level and sizes by `BUILD_DEFAULTS`'s names; left out, no
+    build check runs.
+
     Returns `{"results", "zip", "asked", "stopped", "stop_kind", "stop_detail", "repos",
     "out_dir", "provider", "model"}`. `stopped` is the exception or kind that ended the run
     early, or None; `repos` is every repository of the batch with its state.
     """
     # All of these raise, and all before anything is measured or written: a run that cannot
     # be trusted should leave nothing behind that looks like a result.
+    unknown = set(build) - set(BUILD_DEFAULTS)
+    if unknown:
+        raise TypeError(f"unexpected options: {', '.join(sorted(unknown))}")
+    build = {**BUILD_DEFAULTS, **build}
     check_limits(
         mine_n=mine_n,
         budget_seconds=budget_seconds,
         census_timeout=census_timeout,
         mine_timeout=mine_timeout,
+        **build,
     )
     if model is None and DEFAULT_MODELS[provider] is None:
         raise Refused(f"--provider {provider} requires --model with an explicit model id")
@@ -642,6 +814,7 @@ def review_all(
         "mine_n": mine_n,
         "census_timeout": census_timeout,
         "mine_timeout": mine_timeout,
+        **build,
     }
     progress = support.Progress(out_dir, options, records)
     log.begin(
@@ -688,6 +861,7 @@ def review_all(
                 census_timeout=census_timeout,
                 mine_timeout=mine_timeout,
                 heartbeat_seconds=heartbeat_seconds,
+                build=build,
             )
         except (ProviderUnavailable, ProviderNotIsolated) as stop:
             # The command was there when the run began and is not now, or no longer offers
@@ -760,6 +934,7 @@ def review(
     mine_n: int = mining.DEFAULT_N,
     census_timeout: int = DEFAULT_LANE_TIMEOUT,
     mine_timeout: int = DEFAULT_LANE_TIMEOUT,
+    **build,
 ) -> dict:
     """A run of one repository, and that repository's result."""
     done = review_all(
@@ -771,6 +946,7 @@ def review(
         mine_n=mine_n,
         census_timeout=census_timeout,
         mine_timeout=mine_timeout,
+        **build,
     )
     if not done["results"] and isinstance(done["stopped"], BaseException):
         raise done["stopped"]
