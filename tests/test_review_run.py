@@ -777,6 +777,15 @@ def _old_index(out, *folders):
     return index
 
 
+def _case_sensitive(folder) -> bool:
+    probe = folder / "CaseProbe"
+    probe.write_text("")
+    try:
+        return not (folder / "caseprobe").exists()
+    finally:
+        probe.unlink()
+
+
 def test_an_earlier_runs_local_files_are_removed_and_nothing_else_is_touched(
     ready, tmp_path, py_repo, capsys
 ):
@@ -791,10 +800,13 @@ def test_an_earlier_runs_local_files_are_removed_and_nothing_else_is_touched(
         out / "notes.txt": "keep",
         out / "DETAIL.local.md": "keep",
         mine / "INDEX.local.txt": "keep",
-        mine / "detail.local.md": "keep",
         other / "keep.md": "keep",
         other / "deep" / "DETAIL.local.md": "keep",
     }
+    # A name differing only in case is another file only where the file system says so; on
+    # macOS's default one it is the old file itself, and is rightly removed with it.
+    if _case_sensitive(tmp_path):
+        kept[mine / "detail.local.md"] = "keep"
     for path, text in kept.items():
         path.write_text(text)
     capsys.readouterr()
@@ -807,7 +819,7 @@ def test_an_earlier_runs_local_files_are_removed_and_nothing_else_is_touched(
     assert f"removed old DETAIL.local.md from {other} (raw findings from an earlier run)" in err
     assert err.count("removed old") == 3 and "left " not in err
     assert sorted(p.name for p in mine.iterdir()) == sorted(
-        [*FOUR, "INDEX.local.txt", "detail.local.md"]
+        [*FOUR, "INDEX.local.txt", *(["detail.local.md"] if _case_sensitive(tmp_path) else [])]
     )
 
 

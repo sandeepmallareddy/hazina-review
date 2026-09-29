@@ -397,13 +397,15 @@ def test_the_heartbeat_names_the_build_check_while_it_runs(monkeypatch, tmp_path
 def test_the_log_keeps_the_build_level_and_each_outcome_and_no_command_output(
     monkeypatch, tmp_path, py_repo
 ):
-    _Builds(monkeypatch, {**BUILT, "note": "pip said something private"})
+    # A word of the build's own output that no path on any system contains (macOS keeps its
+    # temporary folders under /private, so "private" would be found in the output path).
+    _Builds(monkeypatch, {**BUILT, "note": "pip said zqxbuildoutputmarker"})
     out = tmp_path / "o"
     assert cli.main([str(py_repo), "--out", str(out), "--build", "discover"]) == 0
     log = (out / support.LOG_NAME).read_text()
     assert "build check: discover" in log
     assert "repo: build check ended after " in log and ": built" in log
-    assert "private" not in log
+    assert "zqxbuildoutputmarker" not in log
 
 
 # --- carrying on ------------------------------------------------------------------------------
