@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-30
+
+### Changed
+
+- README: "If it stops" is now part of Run, before Send; the request to read the short
+  sentences before sending, and the cost estimate, are gone. The tool itself is unchanged.
+
 ## [0.1.2] - 2026-09-29
 
 ### Added
