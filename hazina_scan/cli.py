@@ -215,6 +215,21 @@ def is_git_repo(path: Path) -> bool:
     return (path / git_dir).resolve() == path.resolve()
 
 
+def repos_in(root: Path) -> tuple[list[Path], list[Path]]:
+    """The git repositories directly inside `root`, and its other folders, each sorted by name.
+
+    One level only: a repository inside a plain folder is not looked for. Hidden folders are
+    left out of both lists; when `root` is itself a checkout, its own `.git` would otherwise
+    answer as a bare repository.
+    """
+    folders = sorted(
+        (p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")),
+        key=lambda p: p.name,
+    )
+    found = [p for p in folders if is_git_repo(p)]
+    return found, [p for p in folders if p not in found]
+
+
 def select_repos(args, err) -> list[Path] | None:
     """Every repository this invocation should measure, or None when it cannot run.
 
@@ -229,7 +244,7 @@ def select_repos(args, err) -> list[Path] | None:
         if not root.is_dir():
             print(f"error: not a directory: {root}", file=err)
             return None
-        found = sorted((p for p in root.iterdir() if is_git_repo(p)), key=lambda p: p.name)
+        found, _ = repos_in(root)
         if not found:
             print(f"error: no git repositories in the immediate subdirectories of {root}", file=err)
             return None

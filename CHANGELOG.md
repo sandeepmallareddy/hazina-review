@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--all DIR` reviews every git repository directly inside one folder (one level, sorted by
+  name), alone or together with repositories named on the command line; a repository named
+  twice is reviewed once. Folders that are not git repositories are skipped with one line
+  saying how many, and hidden folders are left out. If none is found, it says so and stops
+  before any check. `--resume` carries on with the list the run started with.
+- With more than five repositories, the check shows one line for all that pass and a line
+  for each problem (ten, then a count pointing to the support log, once a run has started),
+  and a batch says before it starts roughly how long each repository takes.
+
 ## [0.1.1] - 2026-09-29
 
 ### Fixed

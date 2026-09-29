@@ -137,6 +137,12 @@ Several repositories, one after another:
 hazina-review ~/hazina/api ~/hazina/web ~/hazina/mobile
 ```
 
+Many repositories: clone them all into one folder, then review every repository in it:
+
+```bash
+hazina-review --all ~/hazina
+```
+
 - It usually takes 15 to 60 minutes per repository. It prints a line every minute so you
   know it is still working.
 - The AI part is billed to your Claude or Codex account: about $5 to $8 for a small
@@ -174,6 +180,7 @@ The last lines always say what happened and what to type next.
 
 | Option | What it does |
 |---|---|
+| `--all DIR` | Review every git repository directly inside `DIR`. |
 | `--out DIR` | Where to put the results (default `./hazina-review-out`). |
 | `--no-build` | Skip the install, build and tests. Faster, but those results are left empty. |
 | `--provider codex` | Use Codex instead of Claude. |

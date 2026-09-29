@@ -504,12 +504,65 @@ def _marks(stream: TextIO) -> dict[str, str]:
     return MARKS
 
 
-def say(results: list[Result], stream: TextIO) -> None:
-    """The checklist: one line each, and the fix beneath a failure or a warning."""
+#: Up to this many repositories, each has its own line in the checklist.
+REPO_LINES = 5
+#: Past that, how many repository problems are named before the rest are counted.
+NAMED_PROBLEMS = 10
+
+
+def _line(result: Result, marks: dict[str, str], stream: TextIO) -> None:
+    print(f"{marks[result.state]} {result.name}: {result.says}", file=stream)
+    if result.fix and result.state in (FAILED, WARNING):
+        for line in result.fix.splitlines():
+            print(f"    {line}" if line else "", file=stream)
+
+
+def _repositories(results: list[Result], count: int, log, marks, stream) -> None:
+    """The repository lines of a long batch: one line for those that pass, then one for each
+    problem. With a support log to come, ten are named and the rest counted; without one the
+    screen is the only record, so every problem is shown."""
+    ok = sum(result.state == OK for result in results)
+    if all(result.state == SKIPPED for result in results):
+        print(
+            f"{marks[SKIPPED]} Repositories: {count} found, not checked. {results[0].says}",
+            file=stream,
+        )
+    elif ok == count:
+        print(
+            f"{marks[OK]} Repositories: {count} found, each a git repository with commits.",
+            file=stream,
+        )
+    else:
+        print(
+            f"{marks[OK if ok else WARNING]} Repositories: {ok} of {count} found are git "
+            "repositories with commits.",
+            file=stream,
+        )
+    problems = [result for result in results if result.state in (FAILED, WARNING)]
+    shown = problems if log is None else problems[:NAMED_PROBLEMS]
+    for result in shown:
+        _line(result, marks, stream)
+    if len(problems) > len(shown):
+        print(
+            f"  and {len(problems) - len(shown)} more (listed in the support file, {log})",
+            file=stream,
+        )
+
+
+def say(results: list[Result], stream: TextIO, *, repos: int = 0, log=None) -> None:
+    """The checklist: one line each, and the fix beneath a failure or a warning.
+
+    For more than `REPO_LINES` repositories (`repos`), their lines are folded into one, with a
+    line for each that has a problem. `log` is the support log the run will write every line
+    to, or None when there will be none.
+    """
     marks = _marks(stream)
+    about_repos = [result for result in results if result.name.startswith(f"{REPO} ")]
+    folded = False
     for result in results:
-        print(f"{marks[result.state]} {result.name}: {result.says}", file=stream)
-        if result.fix and result.state in (FAILED, WARNING):
-            for line in result.fix.splitlines():
-                print(f"    {line}" if line else "", file=stream)
+        if repos <= REPO_LINES or not result.name.startswith(f"{REPO} "):
+            _line(result, marks, stream)
+        elif not folded:
+            _repositories(about_repos, repos, log, marks, stream)
+            folded = True
     stream.flush()

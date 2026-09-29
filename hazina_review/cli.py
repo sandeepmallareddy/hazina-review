@@ -14,6 +14,7 @@ from hazina_review.providers.registry import (
     ProviderNotIsolated,
     ProviderUnavailable,
 )
+from hazina_scan import cli as scan
 from hazina_scan import orchestrator
 from hazina_scan.build.probe import BUILD_LEVELS
 from hazina_scan.schema import EmissionRefused
@@ -38,6 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Measure what a repository's code actually contains.",
     )
     parser.add_argument("repo", nargs="*", help="path to a git repository")
+    parser.add_argument(
+        "--all",
+        dest="all_dir",
+        metavar="DIR",
+        default=None,
+        help="review every git repository directly inside DIR (one level, sorted by name); "
+        "combine freely with named repositories",
+    )
     parser.add_argument("--out", default=run.DEFAULT_OUT, help="output directory")
     parser.add_argument(
         "--resume",
@@ -177,6 +186,8 @@ def _resumed(args) -> tuple[support.Progress | None, str | None]:
         given.append("--out")
     if args.repo or args.check:
         given.append("repositories" if args.repo else "--check")
+    if args.all_dir is not None:
+        given.append("--all")
     if given:
         return None, (
             f"--resume carries on with the repositories and options the run was started "
@@ -203,12 +214,14 @@ def _already_done(out_dir: Path) -> int:
 #: not; 2 a usage error, a failed check before the run, or a run that stopped early.
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    # Intermixed, so repositories may be named before and after an option such as --all.
+    args = parser.parse_intermixed_args(argv)
     # `--no-build` is the plainer spelling of `--build none` and always wins over it, as in
     # the bundled scanner's own command line.
     if args.no_build:
         args.build_level = "none"
     progress = None
+    skipped: list[Path] = []
     if args.resume is not None:
         progress, refused = _resumed(args)
         if refused:
@@ -223,12 +236,16 @@ def main(argv: list[str] | None = None) -> int:
         repos = [Path(r.path) for r in remaining if Path(r.path).is_dir()]
         out = progress.out_dir
     else:
-        if not args.check and not args.repo:
-            parser.error("the following arguments are required: repo")
+        if not args.check and not args.repo and args.all_dir is None:
+            parser.error("the following arguments are required: repo (or --all DIR)")
         for name, value in DEFAULTS.items():
             if getattr(args, name) is None:
                 setattr(args, name, value)
-        repos = [Path(repo) for repo in args.repo]
+        found, skipped, refused = _found(args.all_dir)
+        if refused:
+            return _refuse(refused)
+        # `--all code` with `code/api` names one checkout twice; it is reviewed once.
+        repos = list(dict.fromkeys(Path(r).expanduser().resolve() for r in [*found, *args.repo]))
         out = Path(args.out)
     # An invalid limit is a command that cannot run, so it is refused before the checks, the
     # last of which is billed.
@@ -243,11 +260,36 @@ def main(argv: list[str] | None = None) -> int:
     except run.Refused as refused:
         return _refuse(str(refused))
     try:
-        return _run(args, repos, out, progress)
+        return _run(args, repos, out, progress, skipped)
     except KeyboardInterrupt:
         # Outside a repository's review, which keeps its own place: during the checks, or
         # while the zip was being written.
         return _refuse("stopped with Ctrl-C.")
+
+
+#: More repositories than this, and a batch is told before it starts roughly how long it takes.
+LONG_BATCH = preflight.REPO_LINES
+
+
+def _found(all_dir: str | None) -> tuple[list[Path], list[Path], str | None]:
+    """The repositories `--all` names, the other folders it passed over, or why it cannot run.
+    Found with the bundled scanner's own rule."""
+    if all_dir is None:
+        return [], [], None
+    point = "Point --all at the folder that holds your repositories."
+    root = Path(all_dir).expanduser().resolve()
+    if not root.is_dir():
+        return [], [], f"{all_dir} is not a folder. {point}"
+    found, skipped = scan.repos_in(root)
+    if not found:
+        return [], [], f"No git repositories found directly inside {all_dir}. {point}"
+    return found, skipped, None
+
+
+def _skipped_line(all_dir: str, skipped: list[Path]) -> str:
+    if len(skipped) == 1:
+        return f"Skipped 1 folder in {all_dir} that is not a git repository."
+    return f"Skipped {len(skipped)} folders in {all_dir} that are not git repositories."
 
 
 def _build(args) -> dict:
@@ -255,7 +297,7 @@ def _build(args) -> dict:
     return {name: getattr(args, name) for name in run.BUILD_DEFAULTS}
 
 
-def _run(args, repos: list[Path], out: Path, progress) -> int:
+def _run(args, repos: list[Path], out: Path, progress, skipped: list[Path]) -> int:
     # The run's own two files first: something else at either name is refused before the
     # checks, the last of which is billed.
     try:
@@ -264,6 +306,8 @@ def _run(args, repos: list[Path], out: Path, progress) -> int:
         return _refuse(str(refused))
     # Before any repository is touched. The checklist goes where the run's own progress goes.
     stream = sys.stdout if args.check else sys.stderr
+    if skipped:
+        print(_skipped_line(args.all_dir, skipped), file=stream)
     checked = preflight.run_checks(
         args.provider,
         args.model,
@@ -272,13 +316,23 @@ def _run(args, repos: list[Path], out: Path, progress) -> int:
         model_check=not args.skip_model_check,
         build_level=args.build_level,
     )
-    preflight.say(checked, stream)
+    # Every line goes into the support log once the run starts; a check alone writes none.
+    logged = not args.check and preflight.passed(checked)
+    preflight.say(
+        checked, stream, repos=len(repos), log=Path(out) / support.LOG_NAME if logged else None
+    )
     if args.check:
         return 0 if preflight.passed(checked) else 2
     if not preflight.passed(checked):
         return _refuse(
             "a check above failed, so the run did not start and nothing was written. If you "
             f"need help, copy the lines above into an email to {support.SUPPORT_ADDRESS}."
+        )
+    if len(repos) > LONG_BATCH:
+        print(
+            f"{len(repos)} repositories: roughly 15 to 60 minutes each; you can stop with Ctrl-C "
+            "and carry on later with --resume.",
+            file=sys.stderr,
         )
     try:
         done = run.review_all(
@@ -292,6 +346,7 @@ def _run(args, repos: list[Path], out: Path, progress) -> int:
             mine_timeout=args.mine_timeout,
             checklist=checked,
             resume=progress,
+            skipped_folders=[folder.name for folder in skipped],
             **_build(args),
         )
     except (ProviderUnavailable, ProviderNotIsolated, run.Refused, support.UnsafeRunFile) as stop:

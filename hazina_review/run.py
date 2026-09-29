@@ -747,6 +747,7 @@ def review_all(
     heartbeat_seconds: float | None = None,
     checklist: list | None = None,
     resume: support.Progress | None = None,
+    skipped_folders: list[str] | None = None,
     **build,
 ) -> dict:
     """Review every repository in turn, then write the zip.
@@ -758,6 +759,9 @@ def review_all(
     has finished, and so does Ctrl-C. What was done is packed either way, and the progress
     file in `out_dir` records where the batch stands, so that `resume` (that file, loaded)
     carries on with only what is left.
+
+    `skipped_folders` are the folders `--all` passed over as not git repositories, named in
+    the support log only.
 
     `build` names the build check's level and sizes by `BUILD_DEFAULTS`'s names; left out, no
     build check runs.
@@ -826,6 +830,8 @@ def review_all(
         repos=records,
         checklist=checklist,
     )
+    if skipped_folders:
+        log.write(f"skipped, not git repositories: {', '.join(skipped_folders)}")
     progress.save()
 
     results: list[dict] = []
