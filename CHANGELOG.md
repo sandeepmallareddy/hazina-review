@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-29
+
 ### Added
 
 - The build check is part of the review, on by default. After both model sessions, each
@@ -194,8 +196,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run starts and again at each write, a folder that resolves inside the repository is
   refused, and the zip refuses a linked member. The message names the path and says to
   remove the link or choose an empty directory for `--out`.
-
-## [0.1.0] - 2026-09-26
 
 ### Changed
 
