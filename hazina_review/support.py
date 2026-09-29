@@ -497,6 +497,46 @@ def scrub(text: str) -> str:
     return _TOKENS.sub("[removed]", text)
 
 
+#: The variables a provider command may need to find its sign-in or its settings. The log says
+#: of each whether it is set and whether a provider command is handed it: the name and a yes or
+#: no, never the value. Enough to see, on a machine nobody here can reach, what a command that
+#: cannot find its sign-in was and was not given.
+ENVIRONMENT_NAMES = (
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "TMPDIR",
+    "USERPROFILE",
+    "XDG_CONFIG_HOME",
+    "CLAUDE_CONFIG_DIR",
+    "CODEX_HOME",
+)
+
+
+def environment_lines(provider: str) -> list[str]:
+    """Two lines for the log: the provider-relevant variables, then the provider's own sign-in
+    variables, each by name with whether it is set and whether the command is handed it."""
+    handed = registry.provider_env(provider)
+
+    def said(name: str) -> str:
+        if not os.environ.get(name):
+            return f"{name}: not set"
+        return f"{name}: set, {'passed' if name in handed else 'not passed'}"
+
+    return [
+        "provider environment (names only): " + "; ".join(said(name) for name in ENVIRONMENT_NAMES),
+        "provider sign-in variables (names only): "
+        + "; ".join(said(name) for name in registry.AUTH_VARS[provider]),
+    ]
+
+
+def _system() -> str:
+    """The operating system, and on a Mac the macOS version, which the kernel's does not say."""
+    said = f"{platform.system()} {platform.release()} ({platform.machine()})"
+    mac = platform.mac_ver()[0] if sys.platform == "darwin" else ""
+    return f"{said}, macOS {mac}" if mac else said
+
+
 def provider_version(executable: str) -> str:
     return registry.version_line(executable) or "unknown"
 
@@ -542,10 +582,12 @@ class Log:
         kind = "resumed" if resumed else "new"
         self._append(["", f"==== hazina-review run started {stamp} ({kind} run) ===="])
         self.write(f"tool: hazina-review {__version__}")
-        self.write(f"system: {platform.system()} {platform.release()} ({platform.machine()})")
+        self.write(f"system: {_system()}")
         self.write(f"python: {platform.python_version()}")
         self.write(f"git: {_git_version()}")
         self.write(f"provider: {provider}, version {provider_version(executable)}")
+        for line in environment_lines(provider):
+            self.write(line)
         self.write(
             f"options: model {options['model']}, budget {options['budget_seconds']}s, task "
             f"ceiling {options['mine_n']}, census limit {options['census_timeout']}s, mining "

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
+from hazina_review import support
 from hazina_review.lanes.census import classify, envelope_error
 from hazina_review.providers import ask as ask_mod
 from hazina_review.providers import registry
@@ -117,6 +118,17 @@ def check_signed_in(provider: str, executable: str) -> Result:
     answer = registry.signed_in(provider, executable)
     if answer is True:
         return Result(SIGNED_IN, OK, f"`{provider}` says it is signed in.")
+    if answer is False and registry.signed_in(provider, executable, operator_env=True) is True:
+        # Signed in as the operator sees it, signed out as this tool starts the command: the
+        # command needs something from the environment this tool does not hand it.
+        return Result(
+            SIGNED_IN,
+            FAILED,
+            f"`{provider}` is signed in, but hazina-review cannot see the sign-in on this "
+            "computer.",
+            "This is a problem with hazina-review, not your account. Please copy these check "
+            f"results into an email to {support.SUPPORT_ADDRESS} so we can fix it.",
+        )
     if answer is False:
         return Result(
             SIGNED_IN,

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-29
+
+### Fixed
+
+- On macOS, the AI tool's own sign-in was not seen by the check or the review sessions, which
+  stopped runs with 'not signed in'. The AI tool keeps that sign-in in the macOS Keychain and
+  finds it by the user's name, and it was started without it. Every start of the AI tool (the
+  sign-in check, the sandbox check, the model check and every review session) is now handed
+  the user's name (`USER`, `LOGNAME`, and `USERNAME` on Windows) beside the home directory,
+  and still no other variable of yours.
+
+### Changed
+
+- When the AI tool says it is not signed in, the check asks it once more with your own
+  environment, as if you had typed the command yourself. If it is signed in that way, the
+  check says the tool is signed in but hazina-review cannot see the sign-in on this computer,
+  and asks you to email the check results to partners@hazinalabs.com, instead of telling you
+  to sign in again. Only the yes or no is kept from either answer.
+- The support log records, by name only, whether each of `HOME`, `USER`, `LOGNAME`, `TMPDIR`,
+  `USERPROFILE`, `XDG_CONFIG_HOME`, `CLAUDE_CONFIG_DIR` and `CODEX_HOME` and each of the AI
+  tool's sign-in variables is set and whether the AI tool is handed it, and on a Mac the
+  macOS version. No value is ever written.
+
 ## [0.1.0] - 2026-09-29
 
 ### Added

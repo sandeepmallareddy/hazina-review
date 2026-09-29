@@ -469,6 +469,41 @@ def test_the_log_says_what_happened_and_never_holds_a_secret(monkeypatch, tmp_pa
         assert not line or line.startswith(("20", "====")), line
 
 
+def test_the_log_names_the_provider_environment_and_never_a_value(monkeypatch, tmp_path):
+    # Values nothing else in a run would print, so any of them in the log came from the
+    # environment. None is shaped like a secret, so the scrubber would not catch them.
+    seeded = {
+        "HOME": str(tmp_path),
+        "USER": "seeded-user-value",
+        "LOGNAME": "seeded-logname-value",
+        "XDG_CONFIG_HOME": "/seeded/xdg/value",
+        registry.AUTH_VARS[PROVIDER][-1]: "/seeded/config/value",
+        registry.api_key_names(PROVIDER)[0]: "seeded-key-value",
+    }
+    for name, value in seeded.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    for name in ("USERPROFILE", "CODEX_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(preflight, "run_checks", lambda *a, **k: [])
+    _Fake(monkeypatch)
+    out = tmp_path / "o"
+    assert cli.main([str(_repos(tmp_path, NAMES[:1])[0]), "--out", str(out)]) == 0
+    log = (out / support.LOG_NAME).read_text()
+    for value in (*seeded.values(), "seeded"):
+        assert value not in log
+    said = next(line for line in log.splitlines() if "provider environment" in line)
+    for name in ("HOME", "USER", "LOGNAME", "TMPDIR"):
+        assert f"{name}: set, passed" in said
+    assert "XDG_CONFIG_HOME: set, not passed" in said
+    assert "USERPROFILE: not set" in said and "CODEX_HOME: not set" in said
+    signs = next(line for line in log.splitlines() if "provider sign-in variables" in line)
+    for name in registry.AUTH_VARS[PROVIDER]:
+        assert name in signs
+    assert f"{registry.api_key_names(PROVIDER)[0]}: set" in signs
+    assert f"{registry.AUTH_VARS[PROVIDER][-1]}: set" in signs
+
+
 def test_lines_said_from_both_lanes_at_once_never_run_together(monkeypatch):
     class _Slow:
         """A stream that lets another thread in during every write, as a busy one would."""

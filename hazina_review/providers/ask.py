@@ -9,8 +9,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from hazina_review.providers.registry import AUTH_VARS, PROVIDERS, isolation_flags, resolve
-from hazina_scan.env import MODEL, build_env, run
+from hazina_review.providers.registry import PROVIDERS, isolation_flags, provider_env, resolve
+from hazina_scan.env import MODEL, run
 
 #: Named to the command as the tools it may use without asking, and a headless turn has nobody
 #: to ask. All three read. This is a permission and not a removal: what takes away the tools
@@ -18,9 +18,6 @@ from hazina_scan.env import MODEL, build_env, run
 #: `--restricted`, one of the flags the registry will not start the command without.
 TOOLS = "Read Grep Glob"
 
-#: A command that was signed in with its own login keeps that login under the operator's home
-#: directory, so the model domain is the one that keeps the real one.
-_HOME_VARS = ("HOME", "USERPROFILE")
 #: Where each command's JSON envelope keeps the model's own words. A command with no entry
 #: writes its final message to a file, which is read as it stands.
 ANSWER_KEYS = {PROVIDERS[0]: "result"}
@@ -188,8 +185,10 @@ def ask(
     executable = resolve(provider)
     flags = isolation_flags(provider, executable)
     # `run` takes a caller's environment as it comes, so this is the only check it gets:
-    # built from nothing, the names below and the harmless base, and refused if denied.
-    env = build_env(passthrough=(*_HOME_VARS, *AUTH_VARS[provider]), domain=MODEL)
+    # built from nothing, who the operator is, the command's own sign-in names and the
+    # harmless base, and refused if denied. The home directory is the operator's real one:
+    # a command signed in with its own login keeps that login there.
+    env = provider_env(provider)
     output_path = None
     try:
         if provider == "codex":

@@ -228,6 +228,19 @@ def test_a_working_sandbox_is_checked_once_with_no_credential(monkeypatch):
 
 
 @pytest.mark.sandbox_check
+def test_the_sandbox_check_is_told_whose_it_is(monkeypatch):
+    known = registry._known(SECOND)
+    monkeypatch.setattr(registry, "help_of", lambda *a: "\n".join(known.required))
+    monkeypatch.setattr(registry.sys, "platform", "darwin")
+    monkeypatch.setenv("USER", "operator-login-name")
+    monkeypatch.setenv("LOGNAME", "operator-login-name")
+    calls = _fake_sandbox(monkeypatch, reads=True)
+    registry.isolation_flags(SECOND, f"/usr/bin/{SECOND}")
+    env = calls[0][1]["env"]
+    assert env["USER"] == "operator-login-name" and env["LOGNAME"] == "operator-login-name"
+
+
+@pytest.mark.sandbox_check
 def test_the_first_command_and_other_platforms_are_not_checked(monkeypatch):
     calls = _fake_sandbox(monkeypatch, reads=False, code=1)
     monkeypatch.setattr(registry, "help_of", lambda *a: EVERY_FLAG)

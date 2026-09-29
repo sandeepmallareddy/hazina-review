@@ -236,8 +236,22 @@ def test_the_child_gets_its_own_credential_and_nobody_elses(monkeypatch, tmp_pat
     # choosing is not, and does not cross.
     assert "XDG_CONFIG_HOME" not in child
     # And that is the whole of it: the harmless base, the home variables, its own names.
-    allowed = {*env_mod._BASE, "TMPDIR", *ask_mod._HOME_VARS, *registry.AUTH_VARS[provider]}
+    allowed = {*env_mod._BASE, "TMPDIR", *registry.IDENTITY_VARS, *registry.AUTH_VARS[provider]}
     assert set(child) <= allowed
+
+
+@pytest.mark.parametrize("provider", registry.PROVIDERS)
+def test_every_turn_is_told_whose_sign_in_to_use(monkeypatch, tmp_path, provider):
+    # On macOS a command that signed in with its own login keeps that sign-in in the Keychain
+    # and finds it by the user's name. A turn not told the name cannot sign in on any Mac.
+    monkeypatch.setenv("USER", "operator-login-name")
+    monkeypatch.setenv("LOGNAME", "operator-login-name")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    seen = _capture(monkeypatch, _done(json.dumps({"result": "{}"})))
+    ask_mod.ask(provider, "m1", "p", tmp_path, [], timeout=5)
+    assert seen["env"]["USER"] == "operator-login-name"
+    assert seen["env"]["LOGNAME"] == "operator-login-name"
+    assert seen["env"]["HOME"] == str(tmp_path)
 
 
 def test_the_prompt_is_one_argument_never_a_shell_string(monkeypatch, tmp_path):

@@ -172,6 +172,87 @@ def test_the_status_command_is_handed_the_sign_in_variables_and_no_others(monkey
     assert env[registry.AUTH_VARS[FIRST][-1]] == "/sign-in-config" and "HOME" in env
 
 
+@pytest.mark.parametrize("provider", [FIRST, SECOND])
+def test_the_status_command_is_told_whose_sign_in_to_look_for(monkeypatch, provider):
+    # The macOS Keychain finds a command's own sign-in by the user's name.
+    _clear_keys(monkeypatch)
+    monkeypatch.setenv("USER", "operator-login-name")
+    monkeypatch.setenv("LOGNAME", "operator-login-name")
+    calls = _status_run(monkeypatch, lambda argv: _completed(argv, 0, '{"loggedIn": true}'))
+    assert preflight.check_signed_in(provider, "/usr/bin/x").state == preflight.OK
+    env = calls[0][1]["env"]
+    assert env["USER"] == "operator-login-name" and env["LOGNAME"] == "operator-login-name"
+    assert len(calls) == 1
+
+
+#: A variable this tool never hands a provider command, standing in for whatever some machine's
+#: command needs to find its sign-in that nobody here has thought of.
+UNFORESEEN = "HAZINA_TEST_UNFORESEEN_SETTING"
+
+
+def _signed_in_only_with(name, provider):
+    """A status command that is signed in only when `name` reaches it."""
+    known = registry._known(provider)
+
+    def answer(argv, env):
+        yes = name in env
+        if known.status_key:
+            status = json.dumps({known.status_key: yes, "email": EMAIL, "orgName": ORG})
+            return _completed(argv, 0 if yes else 1, status)
+        return (
+            _completed(argv, 0, f"Logged in as {EMAIL}")
+            if yes
+            else _completed(argv, 1, "Not logged in")
+        )
+
+    return answer
+
+
+def _status_run_by_env(monkeypatch, answer):
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        if Path(argv[0]).name.startswith("git"):
+            return _REAL_RUN(argv, **kwargs)
+        calls.append((argv, kwargs))
+        return answer(argv, kwargs["env"])
+
+    monkeypatch.setattr(registry.subprocess, "run", fake_run)
+    return calls
+
+
+@pytest.mark.parametrize("provider", [FIRST, SECOND])
+def test_a_sign_in_only_the_operators_own_environment_sees_is_named_as_ours(monkeypatch, provider):
+    _clear_keys(monkeypatch)
+    monkeypatch.setenv(UNFORESEEN, "whatever-it-holds")
+    calls = _status_run_by_env(monkeypatch, _signed_in_only_with(UNFORESEEN, provider))
+    result = preflight.check_signed_in(provider, "/usr/bin/x")
+    assert result.state == preflight.FAILED
+    assert result.says == (
+        f"`{provider}` is signed in, but hazina-review cannot see the sign-in on this computer."
+    )
+    assert "not your account" in result.fix and "partners@hazinalabs.com" in result.fix
+    assert registry.login_command(provider) not in result.fix
+    for kept in (EMAIL, ORG, "whatever-it-holds"):
+        assert kept not in repr(result)
+    # Asked twice: as a turn is started, then once with the operator's own environment.
+    assert len(calls) == 2
+    assert UNFORESEEN not in calls[0][1]["env"]
+    assert calls[1][1]["env"][UNFORESEEN] == "whatever-it-holds"
+    assert calls[0][0] == calls[1][0]
+
+
+@pytest.mark.parametrize("provider", [FIRST, SECOND])
+def test_signed_out_both_ways_is_the_operators_to_fix(monkeypatch, provider):
+    _clear_keys(monkeypatch)
+    calls = _status_run_by_env(monkeypatch, _signed_in_only_with(UNFORESEEN, provider))
+    result = preflight.check_signed_in(provider, "/usr/bin/x")
+    assert result.state == preflight.FAILED
+    assert result.says == f"`{provider}` says it is not signed in."
+    assert registry.login_command(provider) in result.fix
+    assert len(calls) == 2
+
+
 # --- 4. sandbox ------------------------------------------------------------------------------
 
 

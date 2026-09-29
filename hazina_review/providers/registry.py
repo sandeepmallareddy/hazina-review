@@ -153,6 +153,23 @@ _KNOWN = (
 
 PROVIDERS = tuple(known.name for known in _KNOWN)
 AUTH_VARS = {known.name: known.sign_in for known in _KNOWN}
+
+#: Who the operator is and where their home directory is: no secret among them, and handed to
+#: every start of a provider command that may use its sign-in. A command signed in with its own
+#: login keeps that sign-in under the home directory, or in the operating system's credential
+#: store: the macOS Keychain finds it by the user's name, so a command not told the name is
+#: signed out on every Mac. TMPDIR, which macOS also sets per user, is kept by the environment
+#: builder itself.
+IDENTITY_VARS = ("HOME", "USERPROFILE", "USER", "LOGNAME", "USERNAME")
+
+
+def provider_env(provider: str) -> dict[str, str]:
+    """The environment a provider command is started with whenever its sign-in counts: every
+    turn, the model check, and the sign-in status check. Built from nothing: the harmless base,
+    who the operator is, and the command's own sign-in variables, each copied by name."""
+    return build_env(passthrough=(*IDENTITY_VARS, *AUTH_VARS[provider]), domain=MODEL)
+
+
 DEFAULT_MODELS = {known.name: known.default_model for known in _KNOWN}
 
 _HELP_SECONDS = 20
@@ -225,7 +242,7 @@ def sandbox_reads(executable: str, check: tuple[str, ...]) -> bool:
             asked = subprocess.run(
                 [executable, *check, "cat", _PROBE_NAME],
                 cwd=nowhere,
-                env=build_env(passthrough=("HOME", "USERPROFILE", "CODEX_HOME"), domain=STATIC),
+                env=build_env(passthrough=(*IDENTITY_VARS, "CODEX_HOME"), domain=STATIC),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -308,22 +325,26 @@ def login_command(provider: str) -> str:
 _SIGNED_OUT = re.compile(r"not logged in|logged out|not signed in|signed out", re.I)
 
 
-def signed_in(provider: str, executable: str) -> bool | None:
+def signed_in(provider: str, executable: str, *, operator_env: bool = False) -> bool | None:
     """Whether the command says it is signed in, or None when it could not be asked.
 
     Free: no model is called. The status command is started as a turn would be, with the
-    sign-in variables and the home directory, in an empty directory made for the purpose.
+    environment of `provider_env`, in an empty directory made for the purpose. With
+    `operator_env` it is started with the operator's own environment instead, exactly as if
+    they had typed the command themselves: asked only after the first answer was no, to learn
+    whether the sign-in is missing or only hidden from this tool.
     Only the yes or no is kept. What it printed besides, which can name an account, an
     organisation or an address, is dropped here and never returned, logged or stored."""
     known = _known(provider)
     if not known.status:
         return None
+    env = dict(os.environ) if operator_env else provider_env(provider)
     try:
         with tempfile.TemporaryDirectory(prefix="hazina-review-status-") as nowhere:
             asked = subprocess.run(
                 [executable, *known.status],
                 cwd=nowhere,
-                env=build_env(passthrough=("HOME", "USERPROFILE", *known.sign_in), domain=MODEL),
+                env=env,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
