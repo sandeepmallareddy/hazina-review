@@ -222,3 +222,35 @@ def test_a_run_with_a_failed_lane_still_carries_a_record_id(
     out = tmp_path / "o"
     _review(py_repo, out)
     assert record.verify(_on_disk(out / py_repo.name), [record.production_key()]) is True
+
+
+@pytest.fixture
+def windows_newlines(monkeypatch):
+    """Text files written as Windows writes them: every "\\n" goes to disk as "\\r\\n".
+
+    The C `io` module fixes the platform's line ending when it is built, so the pure-Python
+    `_pyio`, which reads `os.linesep`, stands in for it behind `fileguard`'s file opener.
+    """
+    import _pyio
+    import os
+
+    from hazina_scan import fileguard
+
+    monkeypatch.setattr(os, "linesep", "\r\n")
+    monkeypatch.setattr(fileguard.os, "fdopen", _pyio.open)
+
+
+def test_a_run_on_windows_writes_the_same_bytes_and_seals(
+    ready,  # noqa: F811
+    windows_newlines,
+    tmp_path,
+    py_repo,
+):
+    out = tmp_path / "o"
+    _review(py_repo, out)
+    files = _on_disk(out / py_repo.name)
+    for name in ("codebase_repos.json", "measurement.json", "codebase_repo_mining.json"):
+        assert b"\r\n" not in files[name], name
+    assert LINE.match(files["codebase_repos.json"]) is not None
+    assert json.loads(files["codebase_repos.json"])["record_id"] != "0" * 32
+    assert record.verify(files, [record.production_key()]) is True

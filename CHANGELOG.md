@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-01
+
+### Fixed
+
+- On Windows every repository ended "this tool failed: ValueError" and its result went out
+  without a record id: the output files were written with Windows line endings, which the
+  record id step does not accept. They are now written with "\n" line endings on every
+  platform, byte for byte as on macOS and Linux.
+
 ## [0.1.3] - 2026-09-30
 
 ### Changed

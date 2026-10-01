@@ -285,8 +285,13 @@ def open_output_binary(path: Path | str, out_root: Path | str):
 
 
 def write_text(path: Path | str, text: str, out_root: Path | str) -> Path:
-    """`Path.write_text(text, encoding="utf-8")` for an output file, never through a link."""
-    with open_output(path, out_root) as handle:
+    """`Path.write_text(text, encoding="utf-8")` for an output file, never through a link.
+
+    Lines end in "\n" on every platform. Windows would otherwise write "\r\n", and the record
+    id is computed over the bytes as written, as the receiver reads them: a row that does not
+    open with `{\n  "record_id"` cannot be sealed.
+    """
+    with open_output(path, out_root, newline="\n") as handle:
         handle.write(text)
     return Path(path)
 
