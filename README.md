@@ -197,6 +197,36 @@ Then email the zip to **[partners@hazinalabs.com](mailto:partners@hazinalabs.com
 
 Full details: [SECURITY.md](SECURITY.md).
 
+## If you want us to run it
+
+**Not recommended:** this sends us your full source code and history. If your policy does not
+allow that, run the tool yourself as above.
+
+If it does, give us the code in one of two ways.
+
+**Git bundles.** Make one bundle per repository (a single file holding all its branches,
+tags and history):
+
+```bash
+cd ~/hazina/my-repo
+git bundle create ../my-repo.bundle --all
+git bundle verify ../my-repo.bundle      # should say "is okay"
+```
+
+Then email the `.bundle` files to
+**[partners@hazinalabs.com](mailto:partners@hazinalabs.com)**. A bundle holds only committed
+work. If a bundle is too large to attach, upload it to a file-sharing service
+and email us the link.
+
+**GitHub access.** In each repository, open **Settings → Collaborators** (or **Collaborators
+and teams**), click **Add people** and enter
+[`sandeepmallareddy`](https://github.com/sandeepmallareddy). In an organization
+repository, choose the **Read** role. A repository on a personal account cannot be shared
+read-only: GitHub always gives collaborators write access there. If that is a concern, move
+the repository to an organization first, or send a bundle instead. Then email
+**[partners@hazinalabs.com](mailto:partners@hazinalabs.com)** to tell us which repositories
+you shared. You can remove the access once we are done.
+
 ---
 
 **Hazina Labs** · [hazinalabs.com](https://hazinalabs.com) ·
