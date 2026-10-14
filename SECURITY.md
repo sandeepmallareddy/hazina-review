@@ -7,7 +7,8 @@ minimal reproduction without source, secrets or raw model output from a client r
 
 The review launches the selected provider command under the operator's account. The model
 provider receives the source it reads. Nothing is uploaded to Hazina Labs by this tool.
-No project install, build or test command is run by a review.
+The model sessions run no project install, build or test command. The separate build check
+does, and it is on by default (see below).
 
 Both model sessions read one temporary snapshot and one prepared history directory. Files
 with credential-shaped names, symbolic links and submodules are excluded. In the snapshot a file is
@@ -47,8 +48,9 @@ billing follow the operator's account terms, independently of local session pers
 
 The zip contains exactly the four declared measurement files: deterministic measurements,
 review counts, and filtered task descriptions. Other files in reused output folders are excluded.
-Each repository's `codebase_repos.json` carries a `record_id` that lets us check the files were
-not changed after they were generated; editing them afterwards makes that check fail.
+Each repository's `codebase_repos.json` carries a `record_id` that lets us notice files changed
+after they were generated, such as by an accidental edit. Its key ships inside this tool, so it
+does not stop someone who sets out to change the files and recompute the id.
 Repository and owning-company identity fields follow the measurement's identity policy; the zip
 is not a promise of complete anonymity. Model-derived prose is checked for paths, symbols,
 addresses and capitalized names. A lowercase proper name can still resemble an ordinary word.

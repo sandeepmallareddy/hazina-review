@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-14
+
+### Changed
+
+- SECURITY.md now says that the build check, on by default, runs the repository's install,
+  build and test commands; it had said a review runs none. It also says the `record_id` can
+  catch accidental edits but not a deliberate change, because its key ships with the tool.
+
 ## [0.1.4] - 2026-10-01
 
 ### Fixed
