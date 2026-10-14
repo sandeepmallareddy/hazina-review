@@ -6,6 +6,7 @@ with the scanner's own, is in `tests/parity/test_review_build.py`.
 """
 
 import json
+import subprocess
 import threading
 
 import pytest
@@ -482,6 +483,18 @@ def test_the_checklist_warns_that_the_build_changes_the_checkout(tmp_path, py_re
         PROVIDER, None, [py_repo], tmp_path / "o", model_check=False, build_level="none"
     )
     assert not [r for r in quiet if r.name == preflight.BUILD]
+
+
+def test_the_uncommitted_check_sees_staged_edits_and_unusual_names(tmp_path):
+    clean = make_repo(tmp_path, {"a b/é.py": "a = 1\n"}, name="clean")
+    assert preflight.check_uncommitted(clean) is None
+    staged = make_repo(tmp_path, {"a.py": "a = 1\n"}, name="staged")
+    (staged / "a.py").write_text("a = 2\n")
+    subprocess.run(["git", "-C", str(staged), "add", "a.py"], check=True)
+    assert preflight.check_uncommitted(staged).state == preflight.WARNING
+    named = make_repo(tmp_path, {"a b/é.py": "a = 1\n"}, name="named")
+    (named / "a b/é.py").write_text("a = 22\n")
+    assert preflight.check_uncommitted(named).state == preflight.WARNING
 
 
 def test_the_checklist_warns_of_uncommitted_changes_only_when_building(tmp_path):

@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shutil
+import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -292,10 +294,15 @@ def check_repo(raw: Path) -> Result:
 
 def check_uncommitted(raw: Path) -> Result | None:
     """A warning when a repository the build check will run in has changes not yet committed,
-    or None. Only files git already tracks are asked about."""
+    or None. Only files git already tracks are asked about.
+
+    No git command here compares the working tree: any that does may read a file's contents
+    and so run a clean filter the repository's configuration names (`git status` does).
+    Staged changes come from the index against HEAD; unstaged ones from each tracked file's
+    size and modified time as the index recorded them, against the file on disk."""
     path = Path(raw).expanduser().resolve()
-    changed = env.run_git(path, "status", "--porcelain", "--untracked-files=no").strip()
-    if not changed:
+    staged = env.run_git(path, "diff-index", "--cached", "--name-only", "HEAD", "--").strip()
+    if not staged and not _tracked_files_changed(path):
         return None
     return Result(
         f"{REPO} {path.name}",
@@ -303,6 +310,33 @@ def check_uncommitted(raw: Path) -> Result | None:
         f"{path} has uncommitted changes, and the build check may overwrite them.",
         "Commit or stash them first, or run on a throwaway copy, or pass --no-build.",
     )
+
+
+#: One index entry from `git ls-files --debug -z`: the path, then its recorded times and size.
+_INDEX_ENTRY = re.compile(
+    r"(?:^|\n)([^\0\n]+)\0  ctime: [^\n]*\n  mtime: (\d+):(\d+)\n[^\n]*\n[^\n]*\n  size: (\d+)"
+)
+
+
+def _tracked_files_changed(repo: Path) -> bool:
+    """Whether a tracked file is missing, or its size or modified time differs from what the
+    index recorded. Reads no file's contents. A file saved again unchanged counts as changed,
+    and a change that keeps both size and time is missed: this only decides a warning."""
+    for entry in _INDEX_ENTRY.finditer(env.run_git(repo, "ls-files", "--debug", "-z")):
+        name, size = entry.group(1), int(entry.group(4))
+        mtime_ns = int(entry.group(2)) * 1_000_000_000 + int(entry.group(3))
+        try:
+            info = (repo / name).lstat()
+        except OSError:
+            return True
+        if stat.S_ISDIR(info.st_mode):
+            continue  # a submodule
+        on_disk = info.st_mtime_ns
+        if mtime_ns % 1_000_000_000 == 0:  # a git that records whole seconds only
+            on_disk -= on_disk % 1_000_000_000
+        if info.st_size != size or on_disk != mtime_ns:
+            return True
+    return False
 
 
 def _nearest_existing(path: Path) -> Path:

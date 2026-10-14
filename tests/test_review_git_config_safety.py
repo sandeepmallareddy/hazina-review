@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from hazina_review import brief, snapshot
+from hazina_review import brief, preflight, snapshot
 from tests.conftest import fired
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="shell scripts as hooks")
@@ -23,3 +23,11 @@ def test_writing_the_history_starts_nothing_the_repository_configured(tmp_path, 
     repo, markers = armed_repo
     brief.write_brief(repo, tmp_path / "history")
     assert fired(markers) == []
+
+
+def test_the_uncommitted_check_starts_nothing_the_repository_configured(armed_repo):
+    repo, markers = armed_repo
+    result = preflight.check_uncommitted(repo)
+    assert fired(markers) == []
+    # and the edited and deleted files are still reported
+    assert result is not None and result.state == preflight.WARNING
